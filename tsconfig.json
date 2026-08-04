@@ -19,7 +19,7 @@
     /* Path mapping */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["/*"]
     },
 
     /* Linting */
@@ -28,5 +28,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "app", "vite.config.ts"]
+  "include": ["src", "src/app", "vite.config.ts"]
 }
