@@ -1,0 +1,237 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand neutrals */
+  --color-cream: #faf8f4;
+  --color-paper: #ffffff;
+  --color-ink: #11231a;
+  --color-muted: #5c6b62;
+
+  /* Primary — warm orange */
+  --color-brand: #e86100;
+  --color-brand-light: #f2690e;
+  --color-sun: #ff8c4a;
+
+  /* Secondary — grounded green */
+  --color-forest: #145a32;
+  --color-pine: #1e8449;
+  --color-leaf: #27ae60;
+
+  /* Animations */
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-float-slow: float 9s ease-in-out infinite;
+  --animate-marquee: marquee 40s linear infinite;
+  --animate-spin-slow: spin 26s linear infinite;
+  --animate-pop: pop 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-14px);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Use dynamic viewport height so full-screen layouts fit mobile browsers
+   (address-bar show/hide) instead of overflowing. */
+.min-h-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ------------------- Mobile responsive tables -------------------
+   Add class "tbl-mobile" to a <table> and a data-label on each <td>
+   to convert it into stacked cards on phones (no sideways scroll). */
+@media (max-width: 640px) {
+  .tbl-mobile {
+    min-width: 0 !important;
+    display: block;
+  }
+  .tbl-mobile thead {
+    display: none;
+  }
+  .tbl-mobile tbody {
+    display: block;
+  }
+  .tbl-mobile tr {
+    display: block;
+    margin-bottom: 10px;
+    border: 1px solid rgba(17, 35, 26, 0.09);
+    border-bottom-width: 1px !important;
+    border-radius: 14px;
+    padding: 8px 4px;
+    background: var(--color-paper);
+    box-shadow: 0 1px 3px rgba(17, 35, 26, 0.05);
+  }
+  .dark .tbl-mobile tr {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: #131c17;
+  }
+  .tbl-mobile tr:hover {
+    background: var(--color-paper) !important;
+  }
+  .tbl-mobile tr:last-child {
+    margin-bottom: 0;
+  }
+  .tbl-mobile td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: right;
+    padding: 7px 12px;
+    border: none !important;
+  }
+  .tbl-mobile td::before {
+    content: attr(data-label);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-muted);
+    text-align: left;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
+
+/* Accessible, touch-friendly focus rings */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+/* Slightly smaller base type on very small phones */
+@media (max-width: 420px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ------------------------- Dark theme -------------------------
+   The brand tokens are CSS variables, so overriding them on the
+   <html> element flips the entire app. bg-white surfaces are
+   overridden explicitly (text-white stays white for buttons). */
+.dark {
+  color-scheme: dark;
+  --color-cream: #0a100d;
+  --color-paper: #0f1713;
+  --color-ink: #e8f0ea;
+  --color-muted: #93a89c;
+}
+
+.dark .bg-white,
+.dark .bg-white\/70,
+.dark .bg-white\/75,
+.dark .bg-white\/80,
+.dark .bg-white\/85,
+.dark .bg-white\/90,
+.dark .bg-white\/95 {
+  background-color: #111a15;
+}
+
+.dark .ring-white {
+  --tw-ring-color: #111a15;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #0a100d;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #2a3a31;
+  border-color: #0a100d;
+}
+
+::selection {
+  background-color: var(--color-sun);
+  color: var(--color-ink);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 11px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-cream);
+}
+::-webkit-scrollbar-thumb {
+  background: #c9d3cb;
+  border-radius: 999px;
+  border: 3px solid var(--color-cream);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-pine);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Utility for gradient text */
+.text-gradient-brand {
+  background: linear-gradient(100deg, #e86100 0%, #f2690e 45%, #ff8c4a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Decorative dotted grid */
+.bg-dotgrid {
+  background-image: radial-gradient(rgba(20, 90, 50, 0.12) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.bg-dotgrid-light {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
