@@ -71,14 +71,67 @@ function Brand({ light }: { light?: boolean }) {
   );
 }
 
+type PlanLimits = {
+  staffCap: number | null;
+  locationCap: number | null;
+  productCap: number | null;
+  orderCap: number | null;
+  templateCap: number | null;
+};
+
+type Plan = {
+  tier: "STARTER" | "PRO" | "ENTERPRISE";
+  status: "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | null;
+  active: boolean;
+  limits: PlanLimits;
+  featureFlags: {
+    customDomain: boolean;
+    advancedAnalytics: boolean;
+    marketingTools: boolean;
+  };
+};
+
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { me } = useAuth();
-  const sub = me.subscription || (me.store && (me.store as any).subscription) || null;
+  const [plan, setPlan] = useState<Plan | null>(null);
+  const [period, setPeriod] = useState<{ start: string; end: string } | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSubscription() {
+      try {
+        console.log("[SidebarContent] fetching /api/dashboard/subscriptions/usage ...");
+        const res: any = await api.get("/api/dashboard/subscriptions/usage");
+        console.log("[SidebarContent] usage response:", res);
+        if (cancelled) return;
+        setPlan(res?.plan ?? null);
+        setPeriod(res?.period ?? null);
+      } catch (e: any) {
+        console.error("[SidebarContent] failed to load subscription usage:", e);
+        if (cancelled) return;
+        if (e?.status === 403) {
+          setForbidden(true);
+        }
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    }
+
+    loadSubscription();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const limits = plan?.limits || ({} as Partial<PlanLimits>);
   const caps = [
-    { label: "Products", cap: sub?.productCap, used: undefined as number | undefined },
-    { label: "Staff", cap: sub?.staffCap },
-    { label: "Locations", cap: sub?.locationCap },
+    { label: "Products", cap: limits.productCap },
+    { label: "Staff", cap: limits.staffCap },
+    { label: "Locations", cap: limits.locationCap },
   ];
+
   return (
     <div className="flex h-full flex-col">
       <div className="px-5 pb-5 pt-6">
@@ -114,25 +167,35 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
       </nav>
-      <div className="border-t border-white/10 p-4">
-        <div className="rounded-xl bg-white/5 p-3.5">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-extrabold uppercase tracking-wider text-cream-100/60">
-              Plan
+      {!forbidden && (
+        <div className="border-t border-white/10 p-4">
+          <div className="rounded-xl bg-white/5 p-3.5">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-extrabold uppercase tracking-wider text-cream-100/60">
+                Plan
+              </p>
+              <Badge tone="brand">
+                {titleCase(plan?.tier || (loaded ? "Starter" : "..."))}
+              </Badge>
+            </div>
+            <p className="mt-1.5 text-xs font-semibold text-cream-100/80">
+              {plan?.status
+                ? titleCase(plan.status)
+                : loaded
+                ? "No active plan"
+                : "Loading..."}
+              {period?.end ? ` · renews ${fd(period.end)}` : ""}
             </p>
-            <Badge tone="brand">{titleCase(sub?.tier || "Starter")}</Badge>
+            {plan && (
+              <p className="mt-1 text-[11px] text-cream-100/50">
+                {caps
+                  .map((c) => `${c.label}: ${c.cap === null || c.cap === undefined ? "∞" : c.cap}`)
+                  .join(" · ")}
+              </p>
+            )}
           </div>
-          <p className="mt-1.5 text-xs font-semibold text-cream-100/80">
-            {sub?.status ? titleCase(sub.status) : "No active plan"}
-            {sub?.currentPeriodEnd ? ` · renews ${fd(sub.currentPeriodEnd)}` : ""}
-          </p>
-          {sub?.productCap && (
-            <p className="mt-1 text-[11px] text-cream-100/50">
-              {caps.map((c) => `${c.label}: ${c.cap === null ? "∞" : c.cap}`).join(" · ")}
-            </p>
-          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -147,15 +210,12 @@ function dispatchText(n: any): string {
   const s = n.snapshot || {};
   switch (n.kind) {
     case "LOW_STOCK":
-      // Documented snapshot shape: { productName, branchName, quantity, threshold }
       return `${s.productName ?? "A product"} at ${s.branchName ?? "a branch"} — ${
         s.quantity ?? n.sentQuantity ?? "?"
       } left${s.threshold != null ? ` (alert at ${s.threshold})` : ""}`;
     case "EXPIRING_SOON":
-      // ⚠️ Snapshot shape not documented for this kind — best-effort field guesses.
       return `${s.productName ?? "A product"} expiring${s.expiryDate ? ` ${new Date(s.expiryDate).toLocaleDateString()}` : " soon"}`;
     case "PAYMENT_RECEIVED":
-      // ⚠️ Snapshot shape not documented for this kind — best-effort field guesses.
       return s.amount ? `Payment of ${s.amount} received${s.customerName ? ` from ${s.customerName}` : ""}` : "Payment received";
     default:
       return titleCase(n.refType || "");
@@ -166,8 +226,6 @@ function NotificationsBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  // This endpoint is owner-only per the contract — stop polling entirely
-  // the first time a staff account gets a 403, rather than retrying forever.
   const [forbidden, setForbidden] = useState(false);
   const [lastSeenId, setLastSeenId] = useState<string | null>(() => {
     try {
@@ -184,7 +242,6 @@ function NotificationsBell() {
       if (!quiet) setLoading(true);
       try {
         const res: any = await api.get("/api/dashboard/notifications");
-        // Contract shape: { dispatches, nextCursor } — no other key names.
         setItems((res?.dispatches ?? []).slice(0, 20));
       } catch (e: any) {
         if (e?.status === 403) setForbidden(true);
@@ -224,7 +281,6 @@ function NotificationsBell() {
     }
   };
 
-  // Owner-only endpoint — a staff account has nothing to see here, ever.
   if (forbidden) return null;
 
   return (

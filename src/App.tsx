@@ -24,14 +24,33 @@ import SettingsPage from "./pages/SettingsPage";
 import StoreView from "./pages/StoreView";
 
 // ── Cross-subdomain config ────────────────────────────────────────────────
-// The SAME build is deployed to both brikoh.com and dashboard.brikoh.com
-// (two domain aliases pointing at one deployment). Which screens render is
-// decided at runtime by checking window.location.hostname.
+// The SAME build is deployed to brikoh.com, dashboard.brikoh.com, and every
+// merchant's *.brikoh.com storefront subdomain (via the wildcard domain on
+// Vercel). Which screens render is decided at runtime by checking
+// window.location.hostname.
 const DASHBOARD_HOST = "dashboard.brikoh.com";
 const MAIN_HOST = "brikoh.com"; // change to "www.brikoh.com" if that's your canonical host
 
+// Hostnames that are NOT a merchant storefront subdomain, even though they
+// match "something.brikoh.com".
+const RESERVED_SUBDOMAINS = new Set(["dashboard", "www", "api", "app"]);
+
 const isDashboardHost = () =>
   typeof window !== "undefined" && window.location.hostname === DASHBOARD_HOST;
+
+// Returns the merchant's subdomain if the current hostname is
+// "<subdomain>.brikoh.com" and it's not a reserved/system subdomain.
+// Returns null for brikoh.com itself, dashboard.brikoh.com, localhost, etc.
+function getStoreSubdomain(): string | null {
+  if (typeof window === "undefined") return null;
+  const host = window.location.hostname;
+  const parts = host.split(".");
+  // "gemluxe.brikoh.com" -> ["gemluxe", "brikoh", "com"] (length 3)
+  if (parts.length < 3) return null;
+  const sub = parts[0];
+  if (RESERVED_SUBDOMAINS.has(sub)) return null;
+  return sub;
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -52,8 +71,6 @@ function RequireAuth({ children }: { children: ReactNode }) {
   }
   if (!isAuthed) {
     if (isDashboardHost()) {
-      // No local session on the dashboard subdomain — send them back to
-      // the main site to log in, rather than showing /auth here.
       window.location.href = `https://${MAIN_HOST}/#/auth`;
       return (
         <div className="min-h-screen bg-cream-50">
@@ -85,11 +102,6 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-// Receives the auth token handed off from brikoh.com after login/onboarding
-// via https://dashboard.brikoh.com/#/handoff?token=... — reads it, stores it
-// the same way a normal login would, then drops the user into /dashboard.
-// Requires AuthContext to expose a `completeHandoff(token)` method — see the
-// note below the code.
 function Handoff() {
   const navigate = useNavigate();
   const { completeHandoff } = useAuth();
@@ -128,6 +140,7 @@ function NotFound() {
 
 export default function App() {
   const onDashboardHost = isDashboardHost();
+  const storeSubdomain = getStoreSubdomain();
 
   return (
     <AuthProvider>
@@ -144,6 +157,10 @@ export default function App() {
                     <Navigate to="/dashboard" replace />
                   </RequireStore>
                 </RequireAuth>
+              ) : storeSubdomain ? (
+                // e.g. gemluxe.brikoh.com — render that merchant's storefront
+                // directly instead of the marketing Landing page.
+                <Navigate to={`/s/${storeSubdomain}`} replace />
               ) : (
                 <Landing />
               )
@@ -162,6 +179,15 @@ export default function App() {
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
           <Route path="/s/:subdomain" element={<StoreView />} />
           <Route path="/s/:subdomain/p/:productId" element={<StoreView />} />
+          {/* On a merchant's own subdomain, also let bare "/p/:productId"
+              (without repeating the subdomain) resolve to that store's
+              product page — nicer links to hand out. */}
+          {storeSubdomain && (
+            <Route
+              path="/p/:productId"
+              element={<Navigate to={`/s/${storeSubdomain}`} replace />}
+            />
+          )}
           <Route
             path="/onboarding"
             element={
