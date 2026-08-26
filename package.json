@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

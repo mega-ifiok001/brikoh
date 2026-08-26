@@ -81,12 +81,13 @@ interface AuthCtxType {
     confirmPassword: string;
     firstName: string;
     lastName: string;
-    phone?: string;
+    phone: string;
   }) => Promise<Me>;
   verifyEmail: (token: string) => Promise<Me>;
   resendVerification: () => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  completeHandoff: (token: string) => Promise<void>;
   patchAccount: (patch: Record<string, any>) => void;
   patchStore: (patch: Record<string, any>) => void;
 }
@@ -160,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       confirmPassword: string;
       firstName: string;
       lastName: string;
-      phone?: string;
+      phone: string;
     }) => {
       const res = await api.publicPost("/api/public/auth/register", {
         email: p.email,
@@ -168,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         confirmPassword: p.confirmPassword,
         firstName: p.firstName,
         lastName: p.lastName,
-        phone: p.phone || undefined,
+        phone: p.phone,
       });
       const t = extractTokens(res);
       if (t.at) setTokens(t.at, t.rt);
@@ -206,14 +207,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   [loadMe]
 );
 
+  // Contract only defines this on the dashboard route
+  // (POST /api/dashboard/resend-verification) — there is no public
+  // variant, so we call it directly and let errors (429, network, etc.)
+  // propagate to the caller instead of masking them with a fallback
+  // call that would always 404.
   const resendVerification = useCallback(async () => {
-    try {
-      await api.post("/api/dashboard/resend-verification");
-    } catch (e: any) {
-      // Some builds expose this on the public surface.
-      await api.publicPost("/api/public/auth/resend-verification", {});
-      if (e && e.status !== 404) throw e;
-    }
+    await api.post("/api/dashboard/resend-verification");
   }, []);
 
   const logout = useCallback(async () => {
@@ -230,6 +230,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!hasSession()) return;
     const n = await loadMe();
     setMe(n);
+  }, [loadMe]);
+
+  // Stores an access token handed off from the main subdomain (the /handoff
+  // route in App.tsx after sign-in/onboarding on brikoh.com) and pulls the
+  // user's profile into the session, just like a normal login would.
+  const completeHandoff = useCallback(async (token: string) => {
+    await loadMe({ at: token });
   }, [loadMe]);
 
   const patchAccount = useCallback((patch: Record<string, any>) => {
@@ -254,6 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resendVerification,
         logout,
         refresh,
+        completeHandoff,
         patchAccount,
         patchStore,
       }}

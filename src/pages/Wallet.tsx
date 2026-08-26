@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { asList, fd, pick, rawNum, titleCase } from "../lib/format";
+import { asList, fd, rawNum, titleCase } from "../lib/format";
 import {
   Badge,
   Button,

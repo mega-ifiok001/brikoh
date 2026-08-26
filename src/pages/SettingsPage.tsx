@@ -9,7 +9,6 @@ import {
   Field,
   Icon,
   Input,
-  KV,
   PageHead,
   Select,
   Tabs,
@@ -44,7 +43,7 @@ const ACCENT_SWATCH = [
 ] as const;
 
 export default function SettingsPage() {
-  const { me, refresh } = useAuth();
+  const { refresh } = useAuth();
   const [tab, setTab] = useState("business");
 
   return (
@@ -57,6 +56,7 @@ export default function SettingsPage() {
         tabs={[
           { id: "business", label: "Business" },
           { id: "storefront", label: "Storefront" },
+          { id: "bank", label: "Bank accounts" },
           { id: "notifications", label: "Alerts" },
           { id: "account", label: "Account & password" },
           { id: "plan", label: "Plan" },
@@ -67,6 +67,7 @@ export default function SettingsPage() {
 
       {tab === "business" && <BusinessTab onSaved={refresh} />}
       {tab === "storefront" && <StorefrontTab />}
+      {tab === "bank" && <BankAccountsTab />}
       {tab === "notifications" && <AlertsTab />}
       {tab === "account" && <AccountTab />}
       {tab === "plan" && <PlanTab />}
@@ -465,6 +466,198 @@ function StorefrontTab() {
           <Button loading={busy} onClick={save} icon="check">
             Save storefront
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ Bank accounts ------------------------------ */
+
+type BankAccount = {
+  id: string;
+  accountName: string;
+  bankName: string;
+  accountNumber: string;
+  isDefault: boolean;
+};
+
+function BankAccountsTab() {
+  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const [form, setForm] = useState({
+    accountName: "",
+    bankName: "",
+    accountNumber: "",
+    isDefault: false,
+  });
+
+ const load = useCallback(async () => {
+  setLoading(true);
+
+  try {
+    const res: any = await api.get("/api/dashboard/settings/bank-accounts");
+
+    console.log("BANK ACCOUNTS API RESPONSE:", res);
+
+    setAccounts(Array.isArray(res) ? res : res.bankAccounts || []);
+  } catch (e: any) {
+    toast.error(e?.message || "Couldn't load bank accounts.");
+  } finally {
+    setLoading(false);
+  }
+}, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async () => {
+    const accountName = form.accountName.trim();
+    const bankName = form.bankName.trim();
+    const accountNumber = form.accountNumber.trim();
+
+    if (!accountName || !bankName || !accountNumber) {
+      toast.error("Account name, bank name and account number are required.");
+      return;
+    }
+    if (!/^\d{10}$/.test(accountNumber)) {
+      toast.error("Account number must be exactly 10 digits.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await api.post("/api/dashboard/settings/bank-accounts", {
+        accountName,
+        bankName,
+        accountNumber,
+        isDefault: form.isDefault,
+      });
+      toast.success("Bank account added.");
+      setForm({
+        accountName: "",
+        bankName: "",
+        accountNumber: "",
+        isDefault: false,
+      });
+      await load();
+    } catch (e: any) {
+      const msg =
+        e?.code === "VALIDATION_ERROR"
+          ? "Check the fields — account number must be exactly 10 digits."
+          : e?.message || "Couldn't add the bank account.";
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="card max-w-2xl p-6">
+        <div className="skeleton h-40" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      <div className="card anim-rise p-6">
+        <h3 className="font-display text-base font-extrabold">
+          Settlement accounts
+        </h3>
+        <p className="mt-1 text-xs text-ink-400">
+          Bank accounts customers pay into for manual bank transfers. The
+          default account is shown at checkout. Without a default, bank-transfer
+          checkout is unavailable.
+        </p>
+
+        {accounts.length === 0 ? (
+          <p className="mt-4 rounded-xl border border-dashed border-cream-200 px-4 py-6 text-center text-sm text-ink-400">
+            No settlement accounts yet. Add one below.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {accounts.map((a) => (
+              <li
+                key={a.id}
+                className="flex items-start justify-between gap-3 rounded-xl border border-cream-200 px-4 py-3"
+              >
+                <div>
+                  <p className="text-sm font-extrabold">{a.accountName}</p>
+                  <p className="text-xs text-ink-500">
+                    {a.bankName} · {a.accountNumber}
+                  </p>
+                </div>
+                {a.isDefault && (
+                  <Badge tone="green">Default</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card anim-rise p-6">
+        <h3 className="font-display text-base font-extrabold">
+          Add bank account
+        </h3>
+        <div className="mt-4 space-y-4">
+          <Field label="Account name">
+            <Input
+              value={form.accountName}
+              onChange={(e) =>
+                setForm({ ...form, accountName: e.target.value })
+              }
+              placeholder="e.g. Adebayo Idowu"
+              maxLength={200}
+            />
+          </Field>
+          <Field label="Bank name">
+            <Input
+              value={form.bankName}
+              onChange={(e) =>
+                setForm({ ...form, bankName: e.target.value })
+              }
+              placeholder="e.g. Access Bank"
+              maxLength={200}
+            />
+          </Field>
+          <Field label="Account number" hint="Exactly 10 digits">
+            <Input
+              value={form.accountNumber}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  accountNumber: e.target.value.replace(/\D/g, "").slice(0, 10),
+                })
+              }
+              placeholder="0123456789"
+              inputMode="numeric"
+              maxLength={10}
+              className="font-mono"
+            />
+          </Field>
+          <div className="flex items-center justify-between rounded-xl border border-cream-200 px-4 py-3">
+            <div>
+              <p className="text-sm font-extrabold">Set as default</p>
+              <p className="text-xs text-ink-400">
+                Used for bank-transfer checkouts. Only one default at a time.
+              </p>
+            </div>
+            <Toggle
+              checked={form.isDefault}
+              onChange={(v) => setForm({ ...form, isDefault: v })}
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button loading={busy} onClick={save} icon="check">
+              Add account
+            </Button>
+          </div>
         </div>
       </div>
     </div>

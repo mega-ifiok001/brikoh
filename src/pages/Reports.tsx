@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { api } from "../lib/api";
+import { api, API_BASE, getAccessToken } from "../lib/api";
 import { cls, fd, rawNum, titleCase } from "../lib/format";
 import {
   Badge,
@@ -78,16 +78,13 @@ export default function Reports() {
     fallbackName: string
   ) => {
     try {
-      const token =
-        localStorage.getItem("token") ||
-        sessionStorage.getItem("token") ||
-        "";
-      const res = await fetch(
-        `${(api as any).baseUrl || ""}${path}?period=${period}`,
-        {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }
-      );
+      // Tokens live under `brikoh.at` (see lib/api.ts); reading a generic
+      // "token" key always returned undefined, and there is no api.baseUrl.
+      // Use the real helpers so the Authorization header and host are correct.
+      const token = getAccessToken() || "";
+      const res = await fetch(`${API_BASE}${path}?period=${period}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

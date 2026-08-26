@@ -77,6 +77,13 @@ export default function Staff() {
   return m.email || m.account?.email || "";
 };
 
+  // Whether a member row is the signed-in owner — drives the Owner badge
+  // and locks the role dropdown. Uses `myEmail` so the guard is covered.
+  const isMe = (m: any) => {
+    const em = emailOf(m);
+    return !!em && em.toLowerCase() === myEmail.toLowerCase();
+  };
+
   // ---------- Invite ----------
   const sendInvite = async () => {
     const email = invEmail.trim().toLowerCase();

@@ -13,7 +13,6 @@ import {
   PageHead,
   StatCard,
   StatusBadge,
-  Thumb,
 } from "../components/ui";
 
 interface Part {

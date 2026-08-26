@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
@@ -19,6 +19,18 @@ const BUSINESS_TYPES = [
 
 const CURRENCIES = ["NGN", "USD", "GHS", "KES", "ZAR"];
 
+// Contract: store names are letters and single spaces only, 1-120 chars.
+// No digits, punctuation, or symbols (including apostrophes).
+const STORE_NAME_RE = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
+
+interface StoreTemplate {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  previewUrl: string | null;
+}
+
 function labelOf(v: string) {
   return v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -37,6 +49,37 @@ export default function Onboarding() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const [templates, setTemplates] = useState<StoreTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templatesError, setTemplatesError] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setTemplatesLoading(true);
+      setTemplatesError("");
+      try {
+        const res = await api.get("/api/dashboard/templates");
+        if (!alive) return;
+        const list: StoreTemplate[] = res?.templates ?? [];
+        setTemplates(list);
+        // Pre-select the server's current selection if any, else default
+        // to the first (lowest sortOrder) visible template so the picker
+        // never sits with nothing highlighted.
+        setSelectedTemplateId(res?.selectedTemplateId ?? list[0]?.id ?? null);
+      } catch (e: any) {
+        if (!alive) return;
+        setTemplatesError(e?.message || "Couldn't load storefront templates.");
+      } finally {
+        if (alive) setTemplatesLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   if (isOnboarded) return <Navigate to="/dashboard" replace />;
   if (!isVerified) return <VerifyPage />;
 
@@ -45,19 +88,30 @@ export default function Onboarding() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
-    if (storeName.trim().length < 2) return setError("Give your store a name (at least 2 characters).");
+
+    const trimmedName = storeName.trim();
+    if (trimmedName.length < 2) {
+      return setError("Give your store a name (at least 2 characters).");
+    }
+    if (!STORE_NAME_RE.test(trimmedName)) {
+      return setError(
+        "Store name can only contain letters and single spaces — no numbers, apostrophes, or symbols (e.g. \"Adaeze General Store\")."
+      );
+    }
     if (!location.trim()) return setError("Where is your store? A town or city is enough.");
     if (!businessPhone.trim()) return setError("Add the phone number customers can reach you on.");
+
     setBusy(true);
     try {
-     await api.post("/api/dashboard/onboarding", {
-  name: storeName.trim(),
-  businessType,
-  location: location.trim(),
-  businessPhone: businessPhone.trim(),
-  currency,
-});
-      toast.success(`Welcome to Brikoh, ${storeName.trim()}!`);
+      await api.post("/api/dashboard/onboarding", {
+        name: trimmedName,
+        businessType,
+        location: location.trim(),
+        businessPhone: businessPhone.trim(),
+        currency,
+        ...(selectedTemplateId ? { templateId: selectedTemplateId } : {}),
+      });
+      toast.success(`Welcome to Brikoh, ${trimmedName}!`);
       await refresh();
       navigate("/dashboard", { replace: true });
     } catch (err: any) {
@@ -66,10 +120,31 @@ export default function Onboarding() {
         navigate("/verify");
         return;
       }
-      if (err?.status === 409) {
-        // Might already be onboarded (e.g. retry) — try to recover.
+      if (err?.code === "ALREADY_ONBOARDED") {
+        // Account already has a store (e.g. a retried submit) — recover
+        // by loading its context and moving on, rather than showing an error.
         await refresh();
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+      if (err?.code === "SUBDOMAIN_RESERVED") {
+        setError(
+          err.message ||
+            "That store name maps to a reserved address — please choose a different name."
+        );
+        return;
+      }
+      if (err?.code === "SUBDOMAIN_TOO_SHORT") {
+        setError(
+          err.message ||
+            "That store name is too short to generate a storefront address — try something a bit longer."
+        );
+        return;
+      }
+      if (err?.code === "TEMPLATE_NOT_AVAILABLE") {
+        setError(
+          err.message || "That template isn't available anymore — please pick another one."
+        );
         return;
       }
       setError(err?.message || "Couldn't create the store.");
@@ -107,11 +182,14 @@ export default function Onboarding() {
             </div>
           )}
 
-          <Field label="Store name">
+          <Field
+            label="Store name"
+            hint="Letters and spaces only — no numbers, apostrophes, or symbols."
+          >
             <Input
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
-              placeholder="e.g. Adaeze's General Store"
+              placeholder="e.g. Adaeze General Store"
               autoFocus
             />
           </Field>
@@ -127,7 +205,7 @@ export default function Onboarding() {
                   setSubTouched(true);
                   setSubdomain(slugify(e.target.value));
                 }}
-                placeholder="ojamarket"
+                placeholder="brikoh"
                 className="rounded-r-none font-mono"
               />
               <span className="flex items-center whitespace-nowrap rounded-r-[10px] border border-l-0 border-cream-300 bg-cream-100 px-3 text-sm font-bold text-ink-500">
@@ -172,6 +250,67 @@ export default function Onboarding() {
               placeholder="+234 800 000 0000"
               type="tel"
             />
+          </Field>
+
+          <Field
+            label="Storefront template"
+            hint="Pick a look for your storefront — you can customize colors and text later in Settings."
+          >
+            {templatesLoading ? (
+              <div className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-6 text-center text-sm font-semibold text-ink-400">
+                Loading templates…
+              </div>
+            ) : templatesError ? (
+              <div className="rounded-xl border border-danger-100 bg-danger-100/40 px-4 py-3 text-sm font-semibold text-danger-700">
+                {templatesError} — you can still create your store; a default template will be
+                applied and you can change it later in Settings.
+              </div>
+            ) : templates.length === 0 ? (
+              <div className="rounded-xl border border-cream-200 bg-cream-50 px-4 py-3 text-sm font-semibold text-ink-400">
+                No templates available right now — a default will be applied automatically.
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-3">
+                {templates.map((t) => {
+                  const selected = selectedTemplateId === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSelectedTemplateId(t.id)}
+                      className={`flex flex-col overflow-hidden rounded-xl border text-left transition-all ${
+                        selected
+                          ? "border-brand-500 ring-2 ring-brand-200"
+                          : "border-cream-200 hover:border-brand-300"
+                      }`}
+                    >
+                      <div className="flex h-24 items-center justify-center bg-cream-100">
+                        {t.previewUrl ? (
+                          <img
+                            src={t.previewUrl}
+                            alt={t.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Icon name="store" size={22} className="text-ink-300" />
+                        )}
+                      </div>
+                      <div className="p-3">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-extrabold text-ink-800">{t.name}</p>
+                          {selected && (
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 text-white">
+                              <Icon name="check" size={10} strokeWidth={3} />
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-ink-400">{t.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </Field>
 
           <div className="rounded-xl bg-cream-100 px-4 py-3 text-xs font-semibold leading-relaxed text-ink-500">

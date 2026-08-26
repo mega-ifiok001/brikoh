@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api, extractTokens, setTokens } from "../lib/api";
@@ -6,6 +6,9 @@ import { Button, Field, Icon, Input, toast } from "../components/ui";
 
 const HERO_IMG =
   "https://images.pexels.com/photos/28641901/pexels-photo-28641901.jpeg?auto=compress&cs=tinysrgb&dpr=1&fit=crop&h=1200&w=900";
+
+// Contract: 7-17 chars of digits, with optional leading +, spaces, dashes, parens.
+const PHONE_RE = /^\+?[\d\s\-()]{7,17}$/;
 
 // Module-level (not component-level) set of tokens we've already tried to
 // verify. React 18 StrictMode mounts, unmounts, and remounts components in
@@ -98,6 +101,8 @@ export function AuthPage() {
     if (!password) return setError("Enter your password.");
     if (mode === "register") {
       if (!firstName.trim() || !lastName.trim()) return setError("First and last name are required.");
+      if (!phone.trim()) return setError("Add a phone number — it's required to create an account.");
+      if (!PHONE_RE.test(phone.trim())) return setError("Enter a valid phone number (7-17 digits).");
       if (password.length < 8) return setError("Password must be at least 8 characters.");
       if (password !== confirm) return setError("Passwords don't match.");
     }
@@ -108,7 +113,7 @@ export function AuthPage() {
         toast.success("Welcome back.");
         afterAuth(me);
       } else {
-        const me = await register({ email, password, confirmPassword: confirm, firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() || undefined });
+        const me = await register({ email, password, confirmPassword: confirm, firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() });
         toast.success("Account created — check your inbox.");
         navigate(`/verify?email=${encodeURIComponent(email)}`);
         void me;
@@ -161,8 +166,15 @@ export function AuthPage() {
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@store.com" autoComplete="email" required />
         </Field>
         {mode === "register" && (
-          <Field label="Phone" hint="Shown to customers on your storefront.">
-            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+234 800 000 0000" autoComplete="tel" />
+          <Field label="Phone" hint="Required — shown to customers on your storefront.">
+            <Input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+234 800 000 0000"
+              autoComplete="tel"
+              required
+            />
           </Field>
         )}
         <Field label="Password">

@@ -24,6 +24,25 @@ const CATEGORIES = [
 
 const PRICING_PLANS = [
   {
+    tier: "FREE",
+    name: "Free",
+    description: "A real checkout and a real store — no card and no fees to start.",
+    price: 0,
+    popular: false,
+    features: [
+      "1 staff member",
+      "1 business location",
+      "Up to 20 products",
+      "Up to 200 orders / month",
+      "2 storefront templates",
+      "Point of sale",
+      "Public storefront",
+      "Orders, customers & invoices",
+      "Wallet & payouts",
+      "Reports & expenses",
+    ],
+  },
+  {
     tier: "STARTER",
     name: "Starter",
     description: "Everything you need to get your store up and running.",
@@ -87,32 +106,32 @@ const FEATURES = [
   {
     icon: "pos",
     title: "Point of sale",
-    body: "Ring up cash, transfer and credit sales in seconds. Stock moves itself, receipts print clean, walk-ins become customers.",
+    body: "Ring up cash, transfer and credit sales in seconds flat. Stock corrects itself the moment you sell, receipts print clean, and every walk-in becomes a customer you can find again.",
   },
   {
     icon: "store",
     title: "Public storefront",
-    body: "A ready-made brikoh.com storefront your customers can browse and check out on — paid online through Paystack.",
+    body: "A ready-made brikoh.com storefront that's live the same day you sign up — customers browse, add to cart, and pay online through Paystack without you touching a line of code.",
   },
   {
     icon: "box",
     title: "Inventory & branches",
-    body: "Per-branch stock that never goes negative, one-tap transfers between branches, and low-stock & expiry alerts that email you first.",
+    body: "Per-branch stock that never quietly goes negative on you. One-tap transfers between branches, and low-stock & expiry alerts that reach your inbox before your shelf runs dry.",
   },
   {
     icon: "wallet",
     title: "Wallet & payouts",
-    body: "Online sales land straight in your Brikoh wallet. Withdraw to your own bank account whenever you like — fees shown up front.",
+    body: "Every online sale lands straight in your Brikoh wallet, no waiting on settlement. Withdraw to your own bank account whenever you like — fees shown up front, never a surprise.",
   },
   {
     icon: "users",
     title: "Customers, credit & invoices",
-    body: "Track who owes you what, take partial repayments, and issue numbered invoices with a proper payment ledger behind them.",
+    body: "Know exactly who owes you what. Take partial repayments, issue numbered invoices, and keep a proper payment ledger behind every naira — no more chasing debtors from memory.",
   },
   {
     icon: "chart",
     title: "Reports & expenses",
-    body: "Profit & loss, expense breakdowns by category, revenue by channel. No spreadsheet, no weekend maths.",
+    body: "Profit & loss, expenses by category, revenue by channel — all worked out for you. No spreadsheet, no weekend maths, just the numbers you need before Monday.",
   },
 ];
 
@@ -184,11 +203,14 @@ export default function Landing() {
               Free to start · no card needed
             </span>
             <h1 className="mt-5 font-display text-[42px] font-extrabold leading-[1.04] tracking-tight sm:text-[56px]">
-              Your store, your market, <span className="text-brand-500">your business.</span>
+              Open before sunrise.
+              <br />
+              <span className="text-brand-500">Never miss a sale.</span>
             </h1>
             <p className="mt-5 max-w-lg text-lg leading-relaxed text-ink-500">
               Products, point of sale, a public storefront, orders, customers and payouts —
-              the entire market of your business in one warm, fast dashboard.
+              the entire market of your business, running from one warm, fast dashboard
+              that never sleeps when you do.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Link
@@ -257,7 +279,7 @@ export default function Landing() {
                   </p>
                   <p className="font-display text-xl font-extrabold tabular-nums">₦482,300.50</p>
                 </div>
-                <span className="ml-auto rounded-lg bg-ink-900 px-3 py-1.5 text-xs font-extrabold text-cream-50">
+                <span className="ml-auto rounded-lg bg-[#0A100D] px-3 py-1.5 text-xs font-extrabold text-cream-50">
                   Withdraw
                 </span>
               </div>
@@ -302,13 +324,14 @@ export default function Landing() {
             className="h-64 w-full object-cover sm:h-80"
             loading="lazy"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-ink-900/80 via-ink-900/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0A100D]/90 via-[#0A100D]/50 to-transparent" />
           <div className="absolute inset-0 flex flex-col justify-center px-6 sm:px-10">
             <p className="font-display text-2xl font-extrabold leading-snug text-cream-50 sm:text-4xl">
               Built for the way markets actually move.
             </p>
             <p className="mt-2 max-w-md text-sm font-semibold text-cream-100/80 sm:text-base">
-              From the morning restock to the last cash drawer — every kobo accounted for.
+              From the morning restock to the last cash drawer — every kobo accounted for,
+              every customer remembered.
             </p>
           </div>
         </div>
@@ -323,6 +346,10 @@ export default function Landing() {
           <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
             One dashboard runs the whole shop
           </h2>
+          <p className="mt-3 text-sm leading-relaxed text-ink-500 sm:text-base">
+            Everything a growing business needs to sell, track and get paid — and nothing
+            it doesn't. No bloated setup, no separate apps to juggle.
+          </p>
         </div>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f, i) => (
@@ -344,157 +371,168 @@ export default function Landing() {
         </div>
       </section>
 
- {/* Pricing */}
-<section id="pricing" className="border-y border-cream-200 bg-cream-50">
-  <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-    <div className="mx-auto max-w-2xl text-center">
-      <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-600">
-        Pricing
-      </p>
-
-      <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
-        Simple pricing. No surprises.
-      </h2>
-
-      <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-500 sm:text-base">
-        Start small, grow your store, and upgrade when you need more.
-        Every plan gives you the tools to run your business.
-      </p>
-    </div>
-
-    <div className="mt-12 grid gap-5 lg:grid-cols-3">
-      {PRICING_PLANS.map((plan) => (
-        <div
-          key={plan.tier}
-          className={cls(
-            "relative flex flex-col rounded-3xl border bg-white p-6 transition-all hover:-translate-y-1 hover:shadow-lg sm:p-7",
-            plan.popular
-              ? "border-brand-400 shadow-[0_8px_30px_rgba(217,83,42,.12)]"
-              : "border-cream-200"
-          )}
-        >
-          {plan.popular && (
-            <span className="absolute right-5 top-5 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
-              Most popular
-            </span>
-          )}
-
-          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-600">
-            {plan.name}
-          </p>
-
-          <h3 className="mt-2 font-display text-2xl font-extrabold tracking-tight text-ink-900">
-            {plan.name}
-          </h3>
-
-          <p className="mt-2 min-h-[48px] text-sm leading-relaxed text-ink-500">
-            {plan.description}
-          </p>
-
-          {/* Price */}
-          <div className="mt-6 border-y border-cream-100 py-5">
-            {plan.price !== null ? (
-              <>
-                <div className="flex items-end gap-1">
-                  <span className="text-sm font-bold text-ink-500">₦</span>
-                  <span className="font-display text-4xl font-extrabold tracking-tight text-ink-900">
-                    {plan.price.toLocaleString()}
-                  </span>
-                  <span className="mb-1 text-sm font-semibold text-ink-400">
-                    / month
-                  </span>
-                </div>
-
-                <p className="mt-1 text-xs font-semibold text-ink-400">
-                  Cancel or upgrade anytime
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-display text-3xl font-extrabold tracking-tight text-ink-900">
-                  Let&apos;s talk
-                </p>
-
-                <p className="mt-1 text-xs font-semibold text-ink-400">
-                  Pricing tailored to your business
-                </p>
-              </>
-            )}
-          </div>
-
-          {/* Features */}
-          <div className="mt-6">
-            <p className="text-xs font-extrabold uppercase tracking-wider text-ink-400">
-              What&apos;s included
+      {/* Pricing */}
+      <section id="pricing" className="border-y border-cream-200 bg-cream-50">
+        <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-600">
+              Pricing
             </p>
 
-            <ul className="mt-4 space-y-3">
-              {plan.features.map((feature) => (
-                <li
-                  key={feature}
-                  className="flex items-start gap-2.5 text-sm font-semibold text-ink-700"
-                >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-leaf-100 text-leaf-700">
-                    <Icon name="check" size={12} />
-                  </span>
+            <h2 className="mt-2 font-display text-3xl font-extrabold tracking-tight sm:text-4xl">
+              Simple pricing. No surprises.
+            </h2>
 
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
+            <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-500 sm:text-base">
+              Start small, grow your store, and upgrade the moment you need more.
+              Every plan gives you the real tools to run a real business — not a trial
+              version of one.
+            </p>
           </div>
 
-          {/* CTA */}
-          <div className="mt-auto pt-8">
-            {plan.tier === "ENTERPRISE" ? (
-              <a
-                href="mailto:sales@brikoh.com?subject=Brikoh%20Enterprise%20Plan"
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-cream-300 bg-white px-5 py-3.5 text-sm font-extrabold text-ink-800 transition-all hover:border-brand-300 hover:text-brand-600"
-              >
-                Talk to sales
-                <Icon name="arrowRight" size={16} />
-              </a>
-            ) : (
-              <Link
-                to="/auth?mode=register"
+          <div className="mt-12 grid gap-5 lg:grid-cols-3">
+            {PRICING_PLANS.map((plan) => (
+              <div
+                key={plan.tier}
                 className={cls(
-                  "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-extrabold transition-all",
+                  "relative flex flex-col rounded-3xl border bg-white p-6 transition-all hover:-translate-y-1 hover:shadow-lg sm:p-7",
                   plan.popular
-                    ? "bg-brand-500 text-white shadow-[0_4px_14px_rgba(217,83,42,.25)] hover:bg-brand-600"
-                    : "border border-cream-300 bg-white text-ink-800 hover:border-brand-300 hover:text-brand-600"
+                    ? "border-brand-400 shadow-[0_8px_30px_rgba(217,83,42,.12)]"
+                    : "border-cream-200"
                 )}
               >
-                Start with {plan.name}
-                <Icon name="arrowRight" size={16} />
-              </Link>
-            )}
+                {plan.popular && (
+                  <span className="absolute right-5 top-5 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
+                    Most popular
+                  </span>
+                )}
+
+                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-600">
+                  {plan.name}
+                </p>
+
+                <h3 className="mt-2 font-display text-2xl font-extrabold tracking-tight text-ink-900">
+                  {plan.name}
+                </h3>
+
+                <p className="mt-2 min-h-[48px] text-sm leading-relaxed text-ink-500">
+                  {plan.description}
+                </p>
+
+                {/* Price */}
+                <div className="mt-6 border-y border-cream-100 py-5">
+                  {plan.price !== null ? (
+                    <>
+                      <div className="flex items-end gap-1">
+                        {plan.price > 0 ? (
+                          <>
+                            <span className="text-sm font-bold text-ink-500">₦</span>
+                            <span className="font-display text-4xl font-extrabold tracking-tight text-ink-900">
+                              {plan.price.toLocaleString()}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-display text-4xl font-extrabold tracking-tight text-ink-900">
+                            Free
+                          </span>
+                        )}
+                        <span className="mb-1 text-sm font-semibold text-ink-400">
+                          / month
+                        </span>
+                      </div>
+
+                      <p className="mt-1 text-xs font-semibold text-ink-400">
+                        {plan.price > 0
+                          ? "Cancel or upgrade anytime"
+                          : "No card needed. No fees."}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-display text-3xl font-extrabold tracking-tight text-ink-900">
+                        Let&apos;s talk
+                      </p>
+
+                      <p className="mt-1 text-xs font-semibold text-ink-400">
+                        Pricing tailored to your business
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {/* Features */}
+                <div className="mt-6">
+                  <p className="text-xs font-extrabold uppercase tracking-wider text-ink-400">
+                    What&apos;s included
+                  </p>
+
+                  <ul className="mt-4 space-y-3">
+                    {plan.features.map((feature) => (
+                      <li
+                        key={feature}
+                        className="flex items-start gap-2.5 text-sm font-semibold text-ink-700"
+                      >
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-leaf-100 text-leaf-700">
+                          <Icon name="check" size={12} />
+                        </span>
+
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* CTA */}
+                <div className="mt-auto pt-8">
+                  {plan.tier === "ENTERPRISE" ? (
+                    <a
+                      href="mailto:sales@brikoh.com?subject=Brikoh%20Enterprise%20Plan"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-cream-300 bg-white px-5 py-3.5 text-sm font-extrabold text-ink-800 transition-all hover:border-brand-300 hover:text-brand-600"
+                    >
+                      Talk to sales
+                      <Icon name="arrowRight" size={16} />
+                    </a>
+                  ) : (
+                    <Link
+                      to="/auth?mode=register"
+                      className={cls(
+                        "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-extrabold transition-all",
+                        plan.popular
+                          ? "bg-brand-500 text-white shadow-[0_4px_14px_rgba(217,83,42,.25)] hover:bg-brand-600"
+                          : "border border-cream-300 bg-white text-ink-800 hover:border-brand-300 hover:text-brand-600"
+                      )}
+                    >
+                      Start with {plan.name}
+                      <Icon name="arrowRight" size={16} />
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mx-auto mt-8 max-w-3xl rounded-2xl border border-cream-200 bg-white p-5">
+            <div className="flex gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                <Icon name="zap" size={16} />
+              </span>
+
+              <div>
+                <p className="text-sm font-extrabold text-ink-800">
+                  Built to grow with your business
+                </p>
+
+                <p className="mt-1 text-xs leading-relaxed text-ink-500">
+                  Start with the essentials and unlock more capacity as your
+                  business grows. Pro adds multiple locations, more products,
+                  custom domains and advanced analytics. Enterprise gives you
+                  unlimited capacity plus marketing tools.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-      ))}
-    </div>
-
-    <div className="mx-auto mt-8 max-w-3xl rounded-2xl border border-cream-200 bg-white p-5">
-      <div className="flex gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-          <Icon name="zap" size={16} />
-        </span>
-
-        <div>
-          <p className="text-sm font-extrabold text-ink-800">
-            Built to grow with your business
-          </p>
-
-          <p className="mt-1 text-xs leading-relaxed text-ink-500">
-            Start with the essentials and unlock more capacity as your
-            business grows. Pro adds multiple locations, more products,
-            custom domains and advanced analytics. Enterprise gives you
-            unlimited capacity plus marketing tools.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
+      </section>
 
       {/* How it works */}
       <section id="how" className="border-y border-cream-200 bg-white">
@@ -508,31 +546,31 @@ export default function Landing() {
                 Live before lunch
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-ink-500">
-                Three steps between you and your first sale. Most stores are live in under an
-                hour.
+                Four steps between you and your first sale. Most stores are live in under
+                an hour — no developer, no waiting.
               </p>
             </div>
             <ol className="flex-1 space-y-6">
-            {[
-  {
-    t: "Create your account",
-    b: "Sign up with your email and verify it. It only takes a few seconds.",
-  },
-  {
-    t: "Set up your store",
-    b: "Give your store a name, choose your Brikoh subdomain, and get your main branch ready to manage your business.",
-  },
-  {
-    t: "Add products & go live",
-    b: "Add what you're selling, share your storefront link, and start taking your first sales — in-store or online.",
-  },
-  {
-    t: "Manage & grow your business",
-    b: "Keep track of your products, sales, customers, branches, and business performance — all from one place.",
-  },
-].map((s, i) => (
+              {[
+                {
+                  t: "Create your account",
+                  b: "Sign up with your email and verify it. It only takes a few seconds.",
+                },
+                {
+                  t: "Set up your store",
+                  b: "Give your store a name, choose your Brikoh subdomain, and get your main branch ready to manage your business.",
+                },
+                {
+                  t: "Add products & go live",
+                  b: "Add what you're selling, share your storefront link, and start taking your first sales — in-store or online.",
+                },
+                {
+                  t: "Manage & grow your business",
+                  b: "Keep track of your products, sales, customers, branches, and business performance — all from one place.",
+                },
+              ].map((s, i) => (
                 <li key={s.t} className="flex gap-4">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ink-900 font-display text-base font-extrabold text-cream-50">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0A100D] font-display text-base font-extrabold text-cream-50">
                     {i + 1}
                   </span>
                   <div>
@@ -548,18 +586,18 @@ export default function Landing() {
 
       {/* CTA */}
       <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-        <div className="relative overflow-hidden rounded-3xl bg-brand-500 px-6 py-14 text-center sm:px-12">
-          <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-white/10" />
-          <div className="pointer-events-none absolute -bottom-20 -right-10 h-64 w-64 rounded-full bg-ink-900/15" />
+        <div className="relative overflow-hidden rounded-3xl bg-[#0A100D] px-6 py-14 text-center sm:px-12">
+          <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-brand-500/20" />
+          <div className="pointer-events-none absolute -bottom-20 -right-10 h-64 w-64 rounded-full bg-leaf-500/10" />
           <h2 className="relative font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             Your market is waiting.
           </h2>
-          <p className="relative mx-auto mt-3 max-w-md text-[15px] font-semibold text-brand-50/90">
+          <p className="relative mx-auto mt-3 max-w-md text-[15px] font-semibold text-cream-100/80">
             Free to start. Upgrade when your shelves get fuller — not before.
           </p>
           <Link
             to="/auth?mode=register"
-            className="relative mt-7 inline-flex items-center gap-2 rounded-xl bg-white px-7 py-3.5 text-[15px] font-extrabold text-brand-600 shadow-lg transition-transform hover:scale-[1.02]"
+            className="relative mt-7 inline-flex items-center gap-2 rounded-xl bg-brand-500 px-7 py-3.5 text-[15px] font-extrabold text-white shadow-lg transition-transform hover:scale-[1.02] hover:bg-brand-600"
           >
             Open your store
             <Icon name="arrowRight" size={17} />
@@ -571,7 +609,7 @@ export default function Landing() {
       <footer className="border-t border-cream-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0A100D] text-white">
               <Icon name="logo" size={19} />
             </span>
             <span className="font-display text-lg font-extrabold tracking-tight">brikoh</span>
