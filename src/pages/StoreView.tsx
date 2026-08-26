@@ -417,25 +417,30 @@ function ProductDetail({
       <div className="anim-rise grid gap-8 lg:grid-cols-2 lg:gap-12">
         {/* Gallery */}
         <div>
-          <div className="overflow-hidden rounded-2xl border border-cream-200 bg-white">
+          <div className="group relative overflow-hidden rounded-3xl border border-cream-200 bg-white shadow-[0_20px_60px_-24px_rgba(20,15,10,0.18)]">
+            <div
+              className="pointer-events-none absolute -inset-10 -z-10 opacity-[0.08] blur-2xl"
+              style={{ background: accent }}
+            />
             <Thumb
               src={activeImg}
               alt={product.name}
-              className="aspect-square w-full rounded-none"
+              className="aspect-square w-full rounded-none transition-transform duration-700 group-hover:scale-[1.03]"
             />
           </div>
           {images.length > 1 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto">
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
               {images.map((img, i) => (
                 <button
                   key={i}
                   onClick={() => setActiveImg(img)}
                   className={cls(
-                    "h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-lg border bg-white transition-colors",
+                    "h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all duration-200",
                     activeImg === img
-                      ? "border-ink-900"
-                      : "border-cream-200 hover:border-ink-400"
+                      ? "shadow-md"
+                      : "border-cream-200 opacity-70 hover:opacity-100 hover:border-ink-300"
                   )}
+                  style={activeImg === img ? { borderColor: accent } : undefined}
                 >
                   <Thumb src={img} alt="" className="h-full w-full rounded-none" />
                 </button>
@@ -455,12 +460,12 @@ function ProductDetail({
             </p>
           )}
 
-          <h1 className="mt-1 font-display text-3xl font-extrabold leading-tight tracking-tight">
+          <h1 className="mt-1.5 font-display text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
             {product.name}
           </h1>
 
           <div className="mt-4 flex items-baseline gap-2.5">
-            <span className="text-2xl font-extrabold tabular-nums" style={{ color: accent }}>
+            <span className="text-3xl font-extrabold tabular-nums" style={{ color: accent }}>
               {fm(price, currency)}
             </span>
             {product.discountPrice != null && (
@@ -472,15 +477,18 @@ function ProductDetail({
 
           <div className="mt-4">
             {out ? (
-              <span className="inline-flex items-center rounded-full bg-ink-100 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-ink-600">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-ink-100 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-ink-600">
+                <span className="h-1.5 w-1.5 rounded-full bg-ink-400" />
                 Sold out
               </span>
             ) : low ? (
-              <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-amber-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-amber-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                 Low stock
               </span>
             ) : (
-              <span className="inline-flex items-center text-xs font-extrabold uppercase tracking-wide text-leaf-600">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-leaf-50 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-leaf-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-leaf-500" />
                 In stock
               </span>
             )}
@@ -492,18 +500,20 @@ function ProductDetail({
               <div className="mt-2 flex flex-wrap gap-2">
                 {product.variants.map((v) => {
                   const vOut = v.stockStatus === "OUT_OF_STOCK";
+                  const active = selectedVariantId === v.id;
                   return (
                     <button
                       key={v.id}
                       disabled={vOut}
                       onClick={() => setSelectedVariantId(v.id)}
                       className={cls(
-                        "rounded-lg border px-4 py-2.5 text-sm font-bold transition-colors",
-                        selectedVariantId === v.id
-                          ? "border-ink-900 bg-ink-900 text-white"
+                        "rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all duration-150",
+                        active
+                          ? "text-white shadow-md"
                           : "border-cream-300 text-ink-600 hover:border-ink-900",
                         vOut && "cursor-not-allowed opacity-40"
                       )}
+                      style={active ? { background: accent, borderColor: accent } : undefined}
                     >
                       {v.name}
                     </button>
@@ -514,7 +524,7 @@ function ProductDetail({
           )}
 
           <div className="mt-7 flex items-center gap-3">
-            <div className="flex items-center rounded-xl border border-cream-300">
+            <div className="flex items-center rounded-xl border border-cream-300 bg-white">
               <button
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
                 className="px-3.5 py-2.5 text-lg font-bold text-ink-500 transition-colors hover:text-ink-900"
@@ -535,8 +545,8 @@ function ProductDetail({
             <button
               onClick={handleAdd}
               disabled={out}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3.5 text-[15px] font-extrabold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ background: accent }}
+              className="relative flex flex-1 items-center justify-center gap-2 overflow-hidden rounded-xl py-3.5 text-[15px] font-extrabold text-white shadow-lg transition-all active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ background: accent, boxShadow: `0 14px 30px -12px ${accent}` }}
             >
               <Icon name="cart" size={17} />
               {out ? "Sold out" : "Add to cart"}
@@ -1064,15 +1074,15 @@ export default function StoreView() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream-50">
-        <div className="flex flex-col items-center gap-3">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-cream-50 to-cream-100">
+        <div className="flex flex-col items-center gap-4">
           <span
-            className="flex h-12 w-12 items-center justify-center rounded-2xl"
-            style={{ background: "#D9532A" }}
+            className="flex h-14 w-14 items-center justify-center rounded-2xl shadow-xl"
+            style={{ background: "#D9532A", boxShadow: "0 16px 40px -16px #D9532A" }}
           >
-            <Icon name="logo" size={26} className="text-white" />
+            <Icon name="logo" size={28} className="text-white" />
           </span>
-          <Spinner size={22} className="text-ink-400" />
+          <Spinner size={20} className="text-ink-300" />
         </div>
       </div>
     );
@@ -1082,7 +1092,10 @@ export default function StoreView() {
 
   if (rateLimited) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-cream-50 px-6 text-center">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-gradient-to-b from-cream-50 to-cream-100 px-6 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-600 shadow-sm">
+          <Icon name="clock" size={26} />
+        </span>
         <h1 className="font-display text-2xl font-extrabold">Hold on a moment</h1>
         <p className="max-w-sm text-sm text-ink-400">
           This page is getting a lot of traffic — try again in a few seconds.
@@ -1104,8 +1117,8 @@ export default function StoreView() {
 
   if (notFound || !store) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-cream-50 px-6 text-center">
-        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-500">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-gradient-to-b from-cream-50 to-cream-100 px-6 text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 shadow-sm">
           <Icon name="store" size={28} />
         </span>
         <h1 className="font-display text-3xl font-extrabold">This store isn't here</h1>
@@ -1147,11 +1160,43 @@ export default function StoreView() {
 
   return (
     <div className={cls("min-h-screen", t.pageBg)}>
+      <style>{`
+        @keyframes storefrontShine {
+          0% { transform: translateX(-120%) skewX(-12deg); }
+          100% { transform: translateX(220%) skewX(-12deg); }
+        }
+        @keyframes storefrontFloat {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-8px); }
+        }
+        @keyframes storefrontDrift {
+          0% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(2%, -3%) scale(1.05); }
+          100% { transform: translate(0, 0) scale(1); }
+        }
+        .sf-shine { position: relative; overflow: hidden; }
+        .sf-shine::after {
+          content: "";
+          position: absolute;
+          top: 0; left: 0;
+          height: 100%; width: 40%;
+          background: linear-gradient(115deg, transparent, rgba(255,255,255,0.32), transparent);
+          transform: translateX(-120%) skewX(-12deg);
+          pointer-events: none;
+        }
+        .sf-shine:hover::after { animation: storefrontShine 1.1s ease; }
+        .sf-float { animation: storefrontFloat 4.5s ease-in-out infinite; }
+        .sf-drift { animation: storefrontDrift 14s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .sf-shine::after, .sf-float, .sf-drift { animation: none !important; }
+        }
+      `}</style>
+
       {/* ANNOUNCEMENT BAR */}
       {showAnnouncement && (
         <div
-          className="px-4 py-2 text-center text-xs font-extrabold uppercase tracking-wide text-white"
-          style={{ background: accent }}
+          className="sf-shine px-4 py-2.5 text-center text-xs font-extrabold uppercase tracking-wide text-white"
+          style={{ background: `linear-gradient(90deg, ${accent}, ${accent}CC)` }}
         >
           {announcement!.text}
         </div>
@@ -1160,7 +1205,7 @@ export default function StoreView() {
       {/* HEADER */}
       <header
         className={cls(
-          "sticky top-0 z-30 border-b",
+          "sticky top-0 z-30 border-b shadow-[0_1px_0_rgba(0,0,0,0.02)]",
           t.headerBg,
           t.headerText,
           t.headerBorder
@@ -1171,17 +1216,17 @@ export default function StoreView() {
             <img
               src={settings.logoUrl}
               alt={store.name}
-              className={cls("h-10 w-10 object-cover", t.logoBoxRadius)}
+              className={cls("h-10 w-10 object-cover ring-1 ring-black/5", t.logoBoxRadius)}
             />
           ) : tpl === "minimal-boutique" ? (
             <span className="font-serif text-xl italic tracking-tight">{store.name}</span>
           ) : (
             <span
               className={cls(
-                "flex h-10 w-10 items-center justify-center text-white",
+                "flex h-10 w-10 items-center justify-center text-white shadow-sm",
                 t.logoBoxRadius
               )}
-              style={{ background: accent }}
+              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)` }}
             >
               <span className="font-display text-lg font-extrabold">
                 {(store.name || "S").slice(0, 1).toUpperCase()}
@@ -1205,7 +1250,7 @@ export default function StoreView() {
           {tpl === "minimal-boutique" ? (
             <button
               onClick={() => setCartOpen(true)}
-              className="relative ml-auto flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] hover:opacity-70"
+              className="relative ml-auto flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] transition-opacity hover:opacity-70"
             >
               <Icon name="cart" size={16} />
               Cart{count > 0 ? ` (${count})` : ""}
@@ -1214,15 +1259,15 @@ export default function StoreView() {
             <button
               onClick={() => setCartOpen(true)}
               className={cls(
-                "relative ml-auto flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold text-white",
+                "sf-shine relative ml-auto flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition-transform active:scale-[.97]",
                 t.ctaRadius
               )}
-              style={{ background: accent }}
+              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
             >
               <Icon name="cart" size={17} />
               Cart
               {count > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-900 px-1 text-[10px] font-extrabold text-white">
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-900 px-1 text-[10px] font-extrabold text-white shadow-sm ring-2 ring-white">
                   {count}
                 </span>
               )}
@@ -1275,6 +1320,10 @@ export default function StoreView() {
       >
         {/* soft page wash behind the hero */}
         <div
+          className="sf-drift pointer-events-none absolute -right-24 -top-24 -z-10 h-[26rem] w-[26rem] rounded-full opacity-[0.14] blur-3xl"
+          style={{ background: accent }}
+        />
+        <div
           className={cls(
             "pointer-events-none absolute inset-0 -z-10",
             tpl === "classic"
@@ -1298,7 +1347,14 @@ export default function StoreView() {
             )}
           >
             {tpl !== "minimal-boutique" && settings.tagline && (
-              <p className={cls("text-xs font-extrabold", t.heroEyebrowCase)} style={{ color: accent }}>
+              <p
+                className={cls(
+                  "inline-flex items-center gap-1.5 text-xs font-extrabold",
+                  t.heroEyebrowCase
+                )}
+                style={{ color: accent }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
                 {settings.tagline}
               </p>
             )}
@@ -1336,12 +1392,15 @@ export default function StoreView() {
               <button
                 onClick={scrollToProducts}
                 className={cls(
-                  "inline-flex items-center gap-2 px-6 py-3.5 text-sm font-extrabold text-white shadow-lg transition-all active:scale-[.99]",
+                  "sf-shine inline-flex items-center gap-2 px-6 py-3.5 text-sm font-extrabold text-white shadow-lg transition-all active:scale-[.99]",
                   t.ctaRadius,
                   t.ctaCase,
                   t.ctaHover
                 )}
-                style={{ background: accent, boxShadow: `0 12px 30px -10px ${accent}` }}
+                style={{
+                  background: `linear-gradient(135deg, ${accent}, ${accent}DD)`,
+                  boxShadow: `0 14px 32px -10px ${accent}`,
+                }}
               >
                 Shop now
                 <Icon name="arrowRight" size={16} />
@@ -1349,10 +1408,10 @@ export default function StoreView() {
               <button
                 onClick={scrollToProducts}
                 className={cls(
-                  "inline-flex items-center gap-2 rounded-xl border px-6 py-3.5 text-sm font-extrabold transition-colors",
+                  "inline-flex items-center gap-2 rounded-xl border px-6 py-3.5 text-sm font-extrabold backdrop-blur transition-colors",
                   tpl === "modern-grid"
                     ? "border-ink-200 text-ink-700 hover:border-ink-900"
-                    : "border-cream-300 text-ink-700 hover:border-ink-900"
+                    : "border-cream-300 bg-white/60 text-ink-700 hover:border-ink-900"
                 )}
               >
                 Browse categories
@@ -1390,7 +1449,11 @@ export default function StoreView() {
               tpl === "minimal-boutique" ? "order-first lg:order-none" : ""
             )}
           >
-            <div className={cls("relative mx-auto max-w-md", t.heroFrame)}>
+            <div className={cls("sf-float relative mx-auto max-w-md", t.heroFrame)}>
+              <div
+                className="pointer-events-none absolute -inset-6 -z-10 rounded-[2rem] opacity-30 blur-2xl"
+                style={{ background: accent }}
+              />
               {heroImg ? (
                 <>
                   <Thumb
@@ -1401,7 +1464,7 @@ export default function StoreView() {
                   {heroPrice != null && (
                     <span
                       className={cls(
-                        "absolute -bottom-4 left-4 inline-flex items-baseline gap-1 rounded-xl bg-white px-3.5 py-2 shadow-xl",
+                        "absolute -bottom-4 left-4 inline-flex items-baseline gap-1 rounded-xl bg-white px-3.5 py-2 shadow-xl ring-1 ring-black/5",
                         tpl === "modern-grid" && "rounded-none"
                       )}
                     >
@@ -1415,8 +1478,8 @@ export default function StoreView() {
                   )}
                   {heroProd?.discountPrice != null && (
                     <span
-                      className="absolute right-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase text-white"
-                      style={{ background: accent }}
+                      className="absolute right-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase text-white shadow-md"
+                      style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
                     >
                       Sale
                     </span>
@@ -1425,7 +1488,7 @@ export default function StoreView() {
               ) : (
                 <div
                   className="flex aspect-[4/3] w-full items-center justify-center"
-                  style={{ background: accent, opacity: 0.94 }}
+                  style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)` }}
                 >
                   <Icon name="store" size={56} className="text-white" />
                 </div>
@@ -1441,15 +1504,19 @@ export default function StoreView() {
   <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
     <div
       className={cls(
-        "anim-rise relative overflow-hidden px-6 py-8 text-white",
+        "sf-shine anim-rise relative overflow-hidden px-6 py-8 text-white shadow-xl",
         tpl === "classic" ? "rounded-2xl" : tpl === "modern-grid" ? "rounded-none" : "rounded-2xl"
       )}
-      style={{ background: accent }}
+      style={{
+        background: `linear-gradient(120deg, ${accent}, ${accent}CC 60%, ${accent})`,
+        boxShadow: `0 24px 50px -20px ${accent}`,
+      }}
     >
       <div className="pointer-events-none absolute -right-8 -top-10 h-52 w-52 rounded-full bg-white/10" />
       <div className="pointer-events-none absolute -bottom-16 -left-10 h-40 w-40 rounded-full bg-black/10" />
       <div className="relative">
-        <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] opacity-80">
+        <p className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] opacity-90">
+          <span className="h-1.5 w-1.5 rounded-full bg-white" />
           Limited offer
         </p>
         <p className="mt-1 font-display text-2xl font-extrabold sm:text-3xl">
@@ -1484,7 +1551,7 @@ export default function StoreView() {
         {categories.length > 0 && (
           <div
             className={cls(
-              "mb-5 flex flex-wrap gap-2",
+              "mb-6 flex flex-wrap gap-2",
               tpl === "minimal-boutique" && "justify-center gap-6"
             )}
           >
@@ -1509,8 +1576,10 @@ export default function StoreView() {
             <p className="text-sm font-bold text-ink-500">Loading products…</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="card flex flex-col items-center gap-2 px-6 py-16 text-center">
-            <Icon name="box" size={28} className="text-brand-300" />
+          <div className="card flex flex-col items-center gap-3 px-6 py-16 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-400">
+              <Icon name="box" size={26} />
+            </span>
             <p className="font-display text-lg font-extrabold">The shelf is empty right now</p>
             <p className="text-sm text-ink-400">
               {productsMessage || "Check back soon — fresh stock is on its way."}
@@ -1530,7 +1599,7 @@ export default function StoreView() {
     "anim-rise group relative overflow-hidden transition-all duration-300",
     tpl === "minimal-boutique"
       ? ""
-      : "hover:-translate-y-1 hover:shadow-[0_18px_40px_-18px_rgba(0,0,0,0.28)]",
+      : "hover:-translate-y-1.5 hover:shadow-[0_22px_46px_-18px_rgba(0,0,0,0.3)]",
     t.cardRadius,
     t.cardBorder,
     t.cardShadow,
@@ -1554,7 +1623,7 @@ export default function StoreView() {
                         src={p.coverImageUrl || p.images?.[0]}
                         alt={p.name}
                         className={cls(
-                          "w-full transition-transform duration-500 group-hover:scale-105",
+                          "w-full transition-transform duration-500 group-hover:scale-[1.07]",
                           tpl === "minimal-boutique" ? "h-56 sm:h-64" : "h-40",
                           t.thumbRadius
                         )}
@@ -1563,17 +1632,17 @@ export default function StoreView() {
                       {p.discountPrice != null && (
                         <span
                           className={cls(
-                            "absolute left-2 top-2 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white",
+                            "absolute left-2 top-2 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white shadow-sm",
                             tpl === "modern-grid" ? "rounded-none" : "rounded-full"
                           )}
-                          style={{ background: accent }}
+                          style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
                         >
                           Sale
                         </span>
                       )}
 
                       {stock === "OUT_OF_STOCK" && !hasVariants && (
-                        <span className="absolute inset-0 flex items-center justify-center bg-ink-900/45 text-xs font-extrabold uppercase tracking-wider text-white">
+                        <span className="absolute inset-0 flex items-center justify-center bg-ink-900/50 text-xs font-extrabold uppercase tracking-wider text-white backdrop-blur-[1px]">
                           Sold out
                         </span>
                       )}
@@ -1613,7 +1682,8 @@ export default function StoreView() {
                       </div>
 
                       {!hasVariants && stock === "LOW_STOCK" && (
-                        <p className="mt-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-600">
+                        <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-amber-600">
+                          <span className="h-1 w-1 rounded-full bg-amber-500" />
                           Low stock
                         </p>
                       )}
@@ -1632,12 +1702,12 @@ export default function StoreView() {
                           disabled={!hasVariants && stock === "OUT_OF_STOCK"}
                           onClick={() => (hasVariants ? setVariantPick(p) : add(p))}
                           className={cls(
-                            "group/cta mt-2.5 flex w-full items-center justify-center gap-2 py-2 text-xs font-extrabold text-white transition-all active:scale-[.98] disabled:opacity-40",
+                            "group/cta mt-2.5 flex w-full items-center justify-center gap-2 py-2 text-xs font-extrabold text-white shadow-sm transition-all active:scale-[.98] disabled:opacity-40",
                             t.ctaRadius,
                             t.ctaCase,
                             t.ctaHover
                           )}
-                          style={{ background: accent }}
+                          style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
                         >
                           <Icon name="cart" size={14} className="transition-transform group-hover/cta:-translate-x-0.5" />
                           Add to cart
@@ -1754,7 +1824,7 @@ export default function StoreView() {
           href={`https://wa.me/${settings.whatsappNumber.replace(/\D/g, "")}`}
           target="_blank"
           rel="noreferrer"
-          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-105"
+          className="sf-float fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-105"
           aria-label="Chat on WhatsApp"
         >
           <Icon name="whatsapp" size={26} />
@@ -1778,7 +1848,7 @@ export default function StoreView() {
                 add(variantPick, v);
                 setVariantPick(null);
               }}
-              className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-cream-200 px-4 py-3 text-left transition-colors hover:border-brand-300 disabled:opacity-50"
+              className="mb-2 flex w-full items-center justify-between gap-3 rounded-xl border border-cream-200 px-4 py-3 text-left transition-all hover:border-brand-300 hover:shadow-sm disabled:opacity-50"
             >
               <div>
                 <p className="text-sm font-bold">{v.name}</p>
@@ -1800,7 +1870,7 @@ export default function StoreView() {
       {cartOpen && (
         <div className="fixed inset-0 z-50">
           <div
-            className="absolute inset-0 bg-ink-900/45 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-ink-900/50 backdrop-blur-[3px]"
             onClick={() => setCartOpen(false)}
           />
 
@@ -1810,7 +1880,7 @@ export default function StoreView() {
                 {result ? "Order & payment" : "Your basket"}
               </h3>
               <button
-                className="rounded-lg p-2 text-ink-400 hover:bg-cream-100"
+                className="rounded-lg p-2 text-ink-400 transition-colors hover:bg-cream-100 hover:text-ink-700"
                 onClick={() => setCartOpen(false)}
                 aria-label="Close cart"
               >
@@ -1824,7 +1894,7 @@ export default function StoreView() {
                   <div className="text-center">
                     <span
                       className={cls(
-                        "mx-auto flex h-14 w-14 items-center justify-center rounded-full",
+                        "mx-auto flex h-16 w-16 items-center justify-center rounded-full shadow-md",
                         result.provider === "bank_transfer"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-leaf-100 text-leaf-700"
@@ -1832,7 +1902,7 @@ export default function StoreView() {
                     >
                       <Icon
                         name={result.provider === "bank_transfer" ? "bank" : "check"}
-                        size={26}
+                        size={28}
                         strokeWidth={2.6}
                       />
                     </span>
@@ -1849,8 +1919,8 @@ export default function StoreView() {
                       <div className="rounded-2xl border border-cream-200 bg-cream-50 p-4">
                         <div className="flex items-start gap-3">
                           <span
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
-                            style={{ background: accent }}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"
+                            style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
                           >
                             <Icon name="shield" size={19} />
                           </span>
@@ -1866,8 +1936,11 @@ export default function StoreView() {
                       {result.redirectUrl && (
                         <a
                           href={result.redirectUrl}
-                          className="mt-4 flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-extrabold text-white"
-                          style={{ background: accent }}
+                          className="sf-shine mt-4 flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-extrabold text-white shadow-lg"
+                          style={{
+                            background: `linear-gradient(135deg, ${accent}, ${accent}DD)`,
+                            boxShadow: `0 14px 30px -12px ${accent}`,
+                          }}
                         >
                           <Icon name="external" size={15} />
                           Continue to Paystack
@@ -1889,7 +1962,7 @@ export default function StoreView() {
 
                   {result.provider === "bank_transfer" && result.bankDetails && (
                     <div className="mt-6">
-                      <div className="rounded-2xl border border-cream-200 bg-white p-4 text-left">
+                      <div className="rounded-2xl border border-cream-200 bg-white p-4 text-left shadow-sm">
                         <p className="text-xs font-extrabold uppercase tracking-wide text-ink-400">
                           Bank transfer
                         </p>
@@ -1985,7 +2058,9 @@ export default function StoreView() {
                 </div>
               ) : cart.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
-                  <Icon name="cart" size={26} className="text-ink-300" />
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-cream-100 text-ink-300">
+                    <Icon name="cart" size={24} />
+                  </span>
                   <p className="font-bold text-ink-500">Your basket is empty</p>
                   <p className="text-xs text-ink-400">Tap "Add to cart" on anything you like.</p>
                 </div>
@@ -1993,9 +2068,9 @@ export default function StoreView() {
                 cart.map((l) => (
                   <div
                     key={l.key}
-                    className="flex items-center gap-3 border-b border-cream-100 px-5 py-3.5"
+                    className="flex items-center gap-3 border-b border-cream-100 px-5 py-3.5 transition-colors hover:bg-cream-50/60"
                   >
-                    <Thumb src={l.image} className="h-12 w-12" />
+                    <Thumb src={l.image} className="h-12 w-12 rounded-lg ring-1 ring-black/5" />
 
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold">{l.name}</p>
@@ -2006,7 +2081,7 @@ export default function StoreView() {
 
                       <div className="mt-1.5 flex items-center gap-1.5">
                         <button
-                          className="flex h-6 w-6 items-center justify-center rounded-md bg-cream-100 font-extrabold"
+                          className="flex h-6 w-6 items-center justify-center rounded-md bg-cream-100 font-extrabold transition-colors hover:bg-cream-200"
                           onClick={() => bump(l.key, -1)}
                           aria-label="Less"
                         >
@@ -2016,7 +2091,7 @@ export default function StoreView() {
                           {l.qty}
                         </span>
                         <button
-                          className="flex h-6 w-6 items-center justify-center rounded-md bg-cream-100 font-extrabold"
+                          className="flex h-6 w-6 items-center justify-center rounded-md bg-cream-100 font-extrabold transition-colors hover:bg-cream-200"
                           onClick={() => bump(l.key, 1)}
                           aria-label="More"
                         >
@@ -2034,7 +2109,7 @@ export default function StoreView() {
             </div>
 
             {cart.length > 0 && !result && (
-              <div className="space-y-3.5 border-t border-cream-200 bg-cream-50 px-5 py-4">
+              <div className="space-y-3.5 border-t border-cream-200 bg-cream-50 px-5 py-4 shadow-[0_-8px_20px_-16px_rgba(0,0,0,0.2)]">
                 <Input
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
@@ -2086,7 +2161,7 @@ export default function StoreView() {
                           }}
                           disabled={checkingOut}
                           className={cls(
-                            "flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all",
+                            "flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
                             paymentMethod === "paystack"
                               ? "border-brand-500 bg-brand-50 shadow-sm"
                               : "border-cream-200 bg-white hover:border-brand-300",
@@ -2096,7 +2171,7 @@ export default function StoreView() {
                           <div className="flex items-center gap-3">
                             <span
                               className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm"
-                              style={{ background: accent }}
+                              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
                             >
                               <Icon name="shield" size={18} />
                             </span>
@@ -2131,7 +2206,7 @@ export default function StoreView() {
                           }}
                           disabled={checkingOut}
                           className={cls(
-                            "flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all",
+                            "flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
                             paymentMethod === "bank_transfer"
                               ? "border-brand-500 bg-brand-50 shadow-sm"
                               : "border-cream-200 bg-white hover:border-brand-300",
@@ -2190,8 +2265,11 @@ export default function StoreView() {
                 <button
                   onClick={checkout}
                   disabled={checkingOut || availablePaymentMethods.length === 0}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[15px] font-extrabold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ background: accent }}
+                  className="sf-shine flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[15px] font-extrabold text-white shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{
+                    background: `linear-gradient(135deg, ${accent}, ${accent}DD)`,
+                    boxShadow: `0 14px 30px -12px ${accent}`,
+                  }}
                 >
                   {checkingOut ? (
                     <>
