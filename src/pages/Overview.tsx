@@ -155,7 +155,7 @@ export default function Overview() {
         />
         <StatCard
           label="Wallet"
-          value={walletBalance !== undefined ? <Money v={walletBalance} currency="NGN" /> : "—"}
+          value={walletBalance !== undefined ? <Money v={walletBalance} currency="NGN" /> : "coming soon"}
           icon="wallet"
           tone="dark"
           sub="Online sales land here"

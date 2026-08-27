@@ -85,6 +85,7 @@ interface AuthCtxType {
   }) => Promise<Me>;
   verifyEmail: (token: string) => Promise<Me>;
   resendVerification: () => Promise<void>;
+  acceptInvite: (token: string, password: string) => Promise<Me>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   completeHandoff: (token: string) => Promise<void>;
@@ -216,6 +217,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.post("/api/dashboard/resend-verification");
   }, []);
 
+  // Completes a staff invite: exchanges the invite token + a new password
+  // for a session, exactly like register() does. Mirrors POST /auth/register
+  // per the accept-invite contract (accessToken/refreshToken/user).
+  const acceptInvite = useCallback(
+    async (token: string, password: string) => {
+      const res = await api.publicPost("/api/public/auth/accept-invite", {
+        token,
+        password,
+      });
+      const t = extractTokens(res);
+      if (!t.at) throw new Error("Accept-invite did not return a session token.");
+      setTokens(t.at, t.rt);
+      return loadMe(t);
+    },
+    [loadMe]
+  );
+
   const logout = useCallback(async () => {
     try {
       await api.post("/api/public/auth/logout");
@@ -259,6 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         verifyEmail,
         resendVerification,
+        acceptInvite,
         logout,
         refresh,
         completeHandoff,
