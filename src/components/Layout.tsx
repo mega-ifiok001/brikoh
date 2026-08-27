@@ -4,11 +4,13 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { ago, cls, fd, initialsOf, titleCase } from "../lib/format";
 import { Badge, CopyBtn, Icon, toast } from "./ui";
+import { getAccess, type Feature } from "../lib/access";
 
 interface NavItem {
   to: string;
   label: string;
   icon: string;
+  feature: Feature;
 }
 interface NavGroup {
   title: string;
@@ -19,41 +21,41 @@ const NAV: NavGroup[] = [
   {
     title: "Sell",
     items: [
-      { to: "", label: "Overview", icon: "grid" },
-      { to: "/pos", label: "Point of sale", icon: "pos" },
-      { to: "/orders", label: "Orders", icon: "receipt" },
-      { to: "/storefront", label: "Storefront", icon: "store" },
+      { to: "", label: "Overview", icon: "grid", feature: "overview" },
+      { to: "/pos", label: "Point of sale", icon: "pos", feature: "pos" },
+      { to: "/orders", label: "Orders", icon: "receipt", feature: "orders" },
+      { to: "/storefront", label: "Storefront", icon: "store", feature: "storefront" },
     ],
   },
   {
     title: "Inventory",
     items: [
-      { to: "/products", label: "Products", icon: "box" },
-      { to: "/branches", label: "Branches", icon: "building" },
-      { to: "/purchases", label: "Purchases", icon: "truck" },
+      { to: "/products", label: "Products", icon: "box", feature: "products" },
+      { to: "/branches", label: "Branches", icon: "building", feature: "branches" },
+      { to: "/purchases", label: "Purchases", icon: "truck", feature: "purchases" },
     ],
   },
   {
     title: "Customers",
     items: [
-      { to: "/customers", label: "Customers", icon: "users" },
-      { to: "/invoices", label: "Invoices", icon: "file" },
-      { to: "/discounts", label: "Discounts", icon: "tag" },
+      { to: "/customers", label: "Customers", icon: "users", feature: "customers" },
+      { to: "/invoices", label: "Invoices", icon: "file", feature: "invoices" },
+      { to: "/discounts", label: "Discounts", icon: "tag", feature: "discounts" },
     ],
   },
   {
     title: "Money",
     items: [
-      { to: "/wallet", label: "Wallet", icon: "wallet" },
-      { to: "/expenses", label: "Expenses", icon: "banknote" },
-      { to: "/reports", label: "Reports", icon: "chart" },
+      { to: "/wallet", label: "Wallet", icon: "wallet", feature: "wallet" },
+      { to: "/expenses", label: "Expenses", icon: "banknote", feature: "expenses" },
+      { to: "/reports", label: "Reports", icon: "chart", feature: "reports" },
     ],
   },
   {
     title: "Manage",
     items: [
-      { to: "/staff", label: "Staff", icon: "user" },
-      { to: "/settings", label: "Settings", icon: "settings" },
+      { to: "/staff", label: "Staff", icon: "user", feature: "staff" },
+      { to: "/settings", label: "Settings", icon: "settings", feature: "settings" },
     ],
   },
 ];
@@ -92,10 +94,21 @@ type Plan = {
 };
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+  const { me } = useAuth();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [period, setPeriod] = useState<{ start: string; end: string } | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  const access = getAccess(me);
+  const canSettings = access.can("settings");
+
+  // Filter the nav so restricted roles don't even see links they can't use.
+  // Groups that end up empty (e.g. "Manage" for staff) are dropped entirely.
+  const visibleNav = NAV.map((g) => ({
+    ...g,
+    items: g.items.filter((it) => access.can(it.feature)),
+  })).filter((g) => g.items.length > 0);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,7 +151,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <Brand light />
       </div>
       <nav className="scrollbar-slim flex-1 space-y-5 overflow-y-auto px-3 pb-4">
-        {NAV.map((g) => (
+        {visibleNav.map((g) => (
           <div key={g.title}>
             <p className="px-2.5 pb-1.5 text-[10px] font-extrabold uppercase tracking-[0.14em] text-ink-300/70">
               {g.title}
@@ -167,7 +180,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
       </nav>
-      {!forbidden && (
+      {canSettings && !forbidden && (
         <div className="border-t border-white/10 p-4">
           <div className="rounded-xl bg-white/5 p-3.5">
             <div className="flex items-center justify-between">
@@ -346,6 +359,8 @@ export default function Layout() {
   const store = me.store || {};
   const currency: string = store.currency || "NGN";
   const account = me.account || {};
+  const access = getAccess(me);
+  const canSettings = access.can("settings");
   const name =
     [account.firstName, account.lastName].filter(Boolean).join(" ") ||
     account.email ||
@@ -447,13 +462,15 @@ export default function Layout() {
                         <CopyBtn text={previewUrl} label="Copy" />
                       </div>
                     )}
-                    <Link
-                      to="/dashboard/settings"
-                      onClick={() => setUserMenu(false)}
-                      className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-bold text-ink-700 hover:bg-cream-100"
-                    >
-                      <Icon name="settings" size={15} /> Settings
-                    </Link>
+                    {canSettings && (
+                      <Link
+                        to="/dashboard/settings"
+                        onClick={() => setUserMenu(false)}
+                        className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-bold text-ink-700 hover:bg-cream-100"
+                      >
+                        <Icon name="settings" size={15} /> Settings
+                      </Link>
+                    )}
                     <button
                       onClick={async () => {
                         setUserMenu(false);

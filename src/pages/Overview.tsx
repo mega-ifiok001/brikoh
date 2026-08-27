@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getAccess } from "../lib/access";
 import { api } from "../lib/api";
 import { ago, asList, pick, rawNum, titleCase } from "../lib/format";
 import {
@@ -25,6 +26,7 @@ interface Part {
 
 export default function Overview() {
   const { me } = useAuth();
+  const access = getAccess(me);
   const store = me.store || {};
   const currency: string = store.currency || "NGN";
   const [p, setP] = useState<Part>({ overview: null, activity: [], wallet: null, loaded: 0, total: 3 });
@@ -92,14 +94,18 @@ export default function Overview() {
         title={`${greeting}${firstName ? ", " + firstName : ""}`}
         sub={new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
       >
-        <Link to="/dashboard/pos">
-          <Button icon="pos">New sale</Button>
-        </Link>
-        <Link to="/dashboard/products?new=1">
-          <Button variant="outline" icon="plus">
-            Add product
-          </Button>
-        </Link>
+        {access.can("pos") && (
+          <Link to="/dashboard/pos">
+            <Button icon="pos">New sale</Button>
+          </Link>
+        )}
+        {access.can("products") && (
+          <Link to="/dashboard/products?new=1">
+            <Button variant="outline" icon="plus">
+              Add product
+            </Button>
+          </Link>
+        )}
         {hasStorefront && (
           <Button
             variant="dark"
