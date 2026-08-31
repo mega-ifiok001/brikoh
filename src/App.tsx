@@ -18,6 +18,7 @@ import Purchases from "./pages/Purchases";
 import Wallet from "./pages/Wallet";
 import Expenses from "./pages/Expenses";
 import Reports from "./pages/Reports";
+import Analytics from "./pages/Analytics";
 import StorefrontStudio from "./pages/StorefrontStudio";
 import Staff from "./pages/Staff";
 import SettingsPage from "./pages/SettingsPage";
@@ -218,6 +219,7 @@ export default function App() {
             <Route path="wallet" element={<Wallet />} />
             <Route path="expenses" element={<Expenses />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="analytics" element={<Analytics />} />
             <Route path="storefront" element={<StorefrontStudio />} />
             <Route path="staff" element={<Staff />} />
             <Route path="settings" element={<SettingsPage />} />

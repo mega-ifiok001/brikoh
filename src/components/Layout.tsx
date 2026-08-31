@@ -48,6 +48,7 @@ const NAV: NavGroup[] = [
     items: [
       { to: "/wallet", label: "Wallet", icon: "wallet", feature: "wallet" },
       { to: "/expenses", label: "Expenses", icon: "banknote", feature: "expenses" },
+      { to: "/analytics", label: "Analytics", icon: "chart", feature: "analytics" },
       { to: "/reports", label: "Reports", icon: "chart", feature: "reports" },
     ],
   },
@@ -115,14 +116,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
     async function loadSubscription() {
       try {
-        console.log("[SidebarContent] fetching /api/dashboard/subscriptions/usage ...");
         const res: any = await api.get("/api/dashboard/subscriptions/usage");
-        console.log("[SidebarContent] usage response:", res);
         if (cancelled) return;
         setPlan(res?.plan ?? null);
         setPeriod(res?.period ?? null);
       } catch (e: any) {
-        console.error("[SidebarContent] failed to load subscription usage:", e);
         if (cancelled) return;
         if (e?.status === 403) {
           setForbidden(true);

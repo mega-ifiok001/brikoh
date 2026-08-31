@@ -390,7 +390,7 @@ export default function Landing() {
             </p>
           </div>
 
-          <div className="mt-12 grid gap-5 lg:grid-cols-3">
+          <div className="mt-12 grid gap-3 lg:grid-cols-4">
             {PRICING_PLANS.map((plan) => (
               <div
                 key={plan.tier}
