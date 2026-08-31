@@ -56,6 +56,7 @@ const NAV: NavGroup[] = [
     title: "Manage",
     items: [
       { to: "/staff", label: "Staff", icon: "user", feature: "staff" },
+      { to: "/tickets", label: "Support tickets", icon: "lifebuoy", feature: "tickets" },
       { to: "/settings", label: "Settings", icon: "settings", feature: "settings" },
     ],
   },

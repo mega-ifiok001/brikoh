@@ -269,6 +269,13 @@ const P: Record<string, ReactNode> = {
     </g>
   ),
   dot: <circle cx="12" cy="12" r="5" fill="currentColor" stroke="none" />,
+  lifebuoy: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="m8.6 8.6-3.9-3.9M15.4 8.6l3.9-3.9M8.6 15.4l-3.9 3.9M15.4 15.4l3.9 3.9" />
+    </>
+  ),
 };
 
 export function Icon({

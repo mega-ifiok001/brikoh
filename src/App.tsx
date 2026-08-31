@@ -23,6 +23,7 @@ import StorefrontStudio from "./pages/StorefrontStudio";
 import Staff from "./pages/Staff";
 import SettingsPage from "./pages/SettingsPage";
 import StoreView from "./pages/StoreView";
+import Tickets from "./pages/Tickets";
 
 // ── Cross-subdomain config ────────────────────────────────────────────────
 // The SAME build is deployed to brikoh.com, dashboard.brikoh.com, and every
@@ -222,6 +223,7 @@ export default function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="storefront" element={<StorefrontStudio />} />
             <Route path="staff" element={<Staff />} />
+            <Route path="tickets" element={<Tickets />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />

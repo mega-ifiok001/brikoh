@@ -29,7 +29,8 @@ export type Feature =
   | "expenses"
   | "reports"
   | "staff"
-  | "settings";
+  | "settings"
+  | "tickets";
 
 export const ALL_FEATURES: Feature[] = [
   "overview",
@@ -47,6 +48,7 @@ export const ALL_FEATURES: Feature[] = [
   "reports",
   "staff",
   "settings",
+  "tickets",
 ];
 
 export const ROLE_META: Record<RoleId, { label: string; hint: string }> = {
