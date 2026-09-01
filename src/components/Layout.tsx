@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { ago, cls, fd, initialsOf, titleCase } from "../lib/format";
 import { Badge, CopyBtn, Icon, toast } from "./ui";
 import { getAccess, type Feature } from "../lib/access";
+import AnnouncementsBanner from "./AnnouncementsBanner";
 
 interface NavItem {
   to: string;
@@ -49,7 +50,7 @@ const NAV: NavGroup[] = [
       { to: "/wallet", label: "Wallet", icon: "wallet", feature: "wallet" },
       { to: "/expenses", label: "Expenses", icon: "banknote", feature: "expenses" },
       { to: "/analytics", label: "Analytics", icon: "chart", feature: "analytics" },
-      { to: "/reports", label: "Reports", icon: "chart", feature: "reports" },
+      { to: "/reports", label: "Reports", icon: "books", feature: "reports" },
     ],
   },
   {
@@ -490,6 +491,7 @@ export default function Layout() {
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto w-full max-w-[1180px]">
+            <AnnouncementsBanner />
             <Outlet />
           </div>
         </main>
