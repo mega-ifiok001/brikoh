@@ -203,7 +203,7 @@ export default function Orders() {
         lineItems: res?.lineItems ?? [],
       });
 
-      toast.success("Bank transfer confirmed.");
+      toast.success("Payment confirmed — order marked as paid.");
 
       await load();
     } catch (e: any) {
@@ -256,9 +256,11 @@ export default function Orders() {
   const custName = (o: any) =>
     o.customer?.name || "Walk-in";
 
-  const detailOutstanding = Number(
-    detail?.balanceDue ?? 0
-  );
+  // Manual-confirmation orders: the customer says they've paid into
+  // your bank account, but there's no automated payout yet, so you
+  // confirm it yourself once you see it land.
+  const isAwaitingManualConfirmation =
+    detail?.status === "AWAITING_PAYMENT";
 
   return (
     <div>
@@ -406,59 +408,76 @@ export default function Orders() {
               </thead>
 
               <tbody>
-                {items.map((o) => (
-                  <tr
-                    key={o.id}
-                    className="cursor-pointer"
-                    onClick={() =>
-                      openDetail(o.id)
-                    }
-                  >
-                    <td className="font-bold">
-                      {o.orderNumber}
-                    </td>
+                {items.map((o) => {
+                  const needsConfirmation =
+                    o.status === "AWAITING_PAYMENT";
 
-                    <td className="whitespace-nowrap text-ink-500">
-                      {fdt(o.createdAt)}
-                    </td>
+                  return (
+                    <tr
+                      key={o.id}
+                      className={cls(
+                        "cursor-pointer",
+                        needsConfirmation &&
+                          "bg-gold-50/60"
+                      )}
+                      onClick={() =>
+                        openDetail(o.id)
+                      }
+                    >
+                      <td className="font-bold">
+                        {o.orderNumber}
+                      </td>
 
-                    <td className="max-w-[180px] truncate">
-                      {custName(o)}
-                    </td>
+                      <td className="whitespace-nowrap text-ink-500">
+                        {fdt(o.createdAt)}
+                      </td>
 
-                    <td>
-                      <Badge tone="neutral">
-                        {titleCase(o.source)}
-                      </Badge>
-                    </td>
+                      <td className="max-w-[180px] truncate">
+                        {custName(o)}
+                      </td>
 
-                    <td className="text-right tabular-nums">
-                      {o.itemCount ?? "—"}
-                    </td>
+                      <td>
+                        <Badge tone="neutral">
+                          {titleCase(o.source)}
+                        </Badge>
+                      </td>
 
-                    <td className="text-ink-500">
-                      {o.paymentMethod
-                        ? titleCase(
-                            o.paymentMethod
-                          )
-                        : "Online"}
-                    </td>
+                      <td className="text-right tabular-nums">
+                        {o.itemCount ?? "—"}
+                      </td>
 
-                    <td className="text-right">
-                      <Money
-                        v={o.total}
-                        currency={currency}
-                        strong
-                      />
-                    </td>
+                      <td className="text-ink-500">
+                        {o.paymentMethod
+                          ? titleCase(
+                              o.paymentMethod
+                            )
+                          : "Online"}
+                      </td>
 
-                    <td>
-                      <StatusBadge
-                        status={o.status}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                      <td className="text-right">
+                        <Money
+                          v={o.total}
+                          currency={currency}
+                          strong
+                        />
+                      </td>
+
+                      <td>
+                        <div className="flex items-center gap-1.5">
+                          <StatusBadge
+                            status={o.status}
+                          />
+
+                          {needsConfirmation && (
+                            <span className="inline-flex rounded-full bg-gold-100 px-2 py-0.5 text-[10px] font-extrabold uppercase text-gold-700">
+                              Check bank
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -613,7 +632,17 @@ export default function Orders() {
                     <Money
                       v={
                         detail.balanceDue ??
-                        "0.00"
+                        (detail.total != null &&
+                        detail.amountPaid != null
+                          ? String(
+                              Number(
+                                detail.total
+                              ) -
+                                Number(
+                                  detail.amountPaid
+                                )
+                            )
+                          : "0.00")
                       }
                       currency={currency}
                     />
@@ -622,12 +651,67 @@ export default function Orders() {
               </div>
             </div>
 
-            {/* Bank transfer information */}
-            {detail.paymentProvider ===
-              "bank_transfer" && (
+            {/* Manual payment confirmation */}
+            {isAwaitingManualConfirmation && (
+              <div className="mt-5 rounded-xl border border-gold-200 bg-gold-50 p-4">
+                <p className="mb-1 text-sm font-bold text-gold-800">
+                  Waiting on you to confirm this payment
+                </p>
+
+                <p className="mb-3 text-xs text-gold-700">
+                  The customer says they've paid. Check your
+                  bank app or SMS alert — if you see the money,
+                  confirm it below to mark this order as paid.
+                  If nothing has come in, reject it instead.
+                </p>
+
+                <Field
+                  label="Confirmed amount"
+                  hint="What actually landed in your account. Defaults to the order total."
+                >
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={confirmAmount}
+                    onChange={(e) =>
+                      setConfirmAmount(
+                        e.target.value
+                      )
+                    }
+                  />
+                </Field>
+
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="danger"
+                    loading={paymentBusy}
+                    onClick={rejectPayment}
+                  >
+                    No money received — reject
+                  </Button>
+
+                  <Button
+                    icon="check"
+                    loading={paymentBusy}
+                    onClick={confirmPayment}
+                  >
+                    I've seen it — confirm payment
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Bank transfer details, if the order has them */}
+            {detail.bankDetails && (
               <div className="mt-5 rounded-xl border border-cream-200 p-4">
-                <p className="mb-3 text-xs font-extrabold uppercase tracking-wide text-ink-400">
-                  Bank transfer
+                <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-ink-400">
+                  Bank transfer details
+                </p>
+
+                <p className="mb-3 text-xs text-ink-400">
+                  The customer was shown this account number
+                  at checkout and told to pay into it directly.
                 </p>
 
                 <div className="grid gap-x-8 sm:grid-cols-2">
@@ -663,47 +747,6 @@ export default function Orders() {
                     }
                   />
                 </div>
-
-                {detail.status ===
-                  "AWAITING_PAYMENT" && (
-                  <div className="mt-4 border-t border-cream-200 pt-4">
-                    <Field label="Confirmed amount">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={confirmAmount}
-                        onChange={(e) =>
-                          setConfirmAmount(
-                            e.target.value
-                          )
-                        }
-                      />
-                    </Field>
-
-                    <div className="mt-3 flex flex-wrap justify-end gap-2">
-                      <Button
-                        variant="danger"
-                        loading={paymentBusy}
-                        onClick={
-                          rejectPayment
-                        }
-                      >
-                        Reject payment
-                      </Button>
-
-                      <Button
-                        icon="check"
-                        loading={paymentBusy}
-                        onClick={
-                          confirmPayment
-                        }
-                      >
-                        Confirm payment
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
