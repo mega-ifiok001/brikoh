@@ -1145,154 +1145,203 @@ export default function Products() {
    * ---------------------------------------------------------------------------
    */
 
-  const handleFiles =
-    async (
-      files: FileList | null
-    ) => {
-      if (!files?.length) return;
+  const handleFiles = async (
+    files: FileList | null
+  ) => {
+    if (!files?.length) return;
 
-      const availableSlots =
-        MAX_IMAGES -
-        form.images.length;
+    const availableSlots =
+      MAX_IMAGES - form.images.length;
 
-      if (availableSlots <= 0) {
-        toast.error(
-          `Maximum ${MAX_IMAGES} images allowed.`
-        );
-        return;
-      }
+    if (availableSlots <= 0) {
+      toast.error(
+        `Maximum ${MAX_IMAGES} images allowed.`
+      );
+      return;
+    }
 
-      setUploading(true);
+    setUploading(true);
 
-      try {
-        const allowedTypes = [
-          "image/jpeg",
-          "image/png",
-          "image/webp",
-        ];
+    try {
+      const allowedTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+      ];
 
-        const selectedFiles =
-          Array.from(files).slice(
-            0,
-            availableSlots
-          );
+      const selectedFiles = Array.from(
+        files
+      ).slice(0, availableSlots);
 
-        for (const file of selectedFiles) {
-          try {
-            if (
-              !allowedTypes.includes(
-                file.type
-              )
-            ) {
-              throw new Error(
-                "Only JPEG, PNG, and WebP images are supported."
-              );
-            }
-
-            if (
-              file.size < 1 ||
-              file.size >
-                MAX_IMAGE_SIZE
-            ) {
-              throw new Error(
-                "Each image must be between 1 byte and 10 MB."
-              );
-            }
-
-            /*
-             * IMPORTANT:
-             *
-             * declaredSizeBytes MUST remain a number.
-             */
-
-            const preset: any =
-              await api.post(
-                "/api/dashboard/uploads/presign-product-image",
-                {
-                  fileName:
-                    file.name,
-                  contentType:
-                    file.type,
-                  declaredSizeBytes:
-                    file.size,
-                }
-              );
-
-            if (
-              !preset?.uploadUrl ||
-              !preset?.publicUrl
-            ) {
-              throw new Error(
-                "The upload service did not return the required URLs."
-              );
-            }
-
-            const response =
-              await fetch(
-                preset.uploadUrl,
-                {
-                  method: "PUT",
-                  headers: {
-                    "Content-Type":
-                      file.type,
-                  },
-                  body: file,
-                }
-              );
-
-            if (!response.ok) {
-              throw new Error(
-                `Image upload failed (${response.status}).`
-              );
-            }
-
-            if (
-              preset.publicUrl
-                .length > 2048
-            ) {
-              throw new Error(
-                "The returned image URL is too long."
-              );
-            }
-
-            setForm(
-              (current) => {
-                if (
-                  current.images.includes(
-                    preset.publicUrl
-                  )
-                ) {
-                  return current;
-                }
-
-                return {
-                  ...current,
-                  images: [
-                    ...current.images,
-                    preset.publicUrl,
-                  ].slice(
-                    0,
-                    MAX_IMAGES
-                  ),
-                };
-              }
-            );
-          } catch (e: any) {
-            toast.error(
-              e?.message ||
-                "Image upload failed."
+      for (const file of selectedFiles) {
+        try {
+          if (
+            !allowedTypes.includes(
+              file.type
+            )
+          ) {
+            throw new Error(
+              "Only JPEG, PNG, and WebP images are supported."
             );
           }
-        }
-      } finally {
-        setUploading(false);
 
-        if (fileRef.current) {
-          fileRef.current.value =
-            "";
+          if (
+            file.size < 1 ||
+            file.size > MAX_IMAGE_SIZE
+          ) {
+            throw new Error(
+              "Each image must be between 1 byte and 10 MB."
+            );
+          }
+
+          /*
+           * Ask the API to sign a direct-to-Cloudinary upload.
+           */
+
+          const preset: any =
+            await api.post(
+              "/api/dashboard/uploads/presign-product-image",
+              {
+                fileName: file.name,
+                contentType: file.type,
+                declaredSizeBytes:
+                  file.size,
+              }
+            );
+
+          const {
+            cloudName,
+            apiKey,
+            timestamp,
+            signature,
+            folder,
+            publicId,
+          } = preset || {};
+
+          if (
+            !cloudName ||
+            !apiKey ||
+            !timestamp ||
+            !signature ||
+            !folder ||
+            !publicId
+          ) {
+            throw new Error(
+              "The upload service did not return the required signing parameters."
+            );
+          }
+
+          /*
+           * Upload the raw bytes straight to Cloudinary using the
+           * signed params. Never trust a predicted URL — always read
+           * back where Cloudinary actually put the file.
+           */
+
+          const cloudinaryForm =
+            new FormData();
+
+          cloudinaryForm.append(
+            "file",
+            file
+          );
+          cloudinaryForm.append(
+            "api_key",
+            apiKey
+          );
+          cloudinaryForm.append(
+            "timestamp",
+            String(timestamp)
+          );
+          cloudinaryForm.append(
+            "signature",
+            signature
+          );
+          cloudinaryForm.append(
+            "folder",
+            folder
+          );
+          cloudinaryForm.append(
+            "public_id",
+            publicId
+          );
+
+          const response = await fetch(
+            `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+            {
+              method: "POST",
+              body: cloudinaryForm,
+            }
+          );
+
+          let cloudinaryResult: any =
+            null;
+
+          try {
+            cloudinaryResult =
+              await response.json();
+          } catch {
+            // Cloudinary didn't return JSON.
+          }
+
+          if (!response.ok) {
+            const message =
+              cloudinaryResult?.error
+                ?.message ||
+              `Image upload failed (${response.status}).`;
+
+            throw new Error(message);
+          }
+
+          const finalUrl:
+            | string
+            | undefined =
+            cloudinaryResult?.secure_url ||
+            cloudinaryResult?.url;
+
+          if (!finalUrl) {
+            throw new Error(
+              "Cloudinary didn't return a usable image URL."
+            );
+          }
+
+          if (finalUrl.length > 2048) {
+            throw new Error(
+              "The returned image URL is too long."
+            );
+          }
+
+          setForm((current) => {
+            if (
+              current.images.includes(
+                finalUrl
+              )
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              images: [
+                ...current.images,
+                finalUrl,
+              ].slice(0, MAX_IMAGES),
+            };
+          });
+        } catch (e: any) {
+          toast.error(
+            e?.message ||
+              "Image upload failed."
+          );
         }
       }
-    };
+    } finally {
+      setUploading(false);
+
+      if (fileRef.current) {
+        fileRef.current.value = "";
+      }
+    }
+  };
 
   /*
    * ---------------------------------------------------------------------------
@@ -2299,7 +2348,7 @@ export default function Products() {
           </Field>
 
           <Field
-            label="SKU"
+            label="Product Code"
             hint="Optional, up to 64 characters."
           >
             <Input
@@ -2411,7 +2460,10 @@ export default function Products() {
               </Field>
             )}
 
-          <Field label="Category">
+                 <Field
+            label="Category"
+            hint="Groups similar products together so customers can browse by type — e.g. Drinks, Snacks, Toiletries."
+          >
             <Select
               value={
                 form.categoryId
@@ -2458,7 +2510,10 @@ export default function Products() {
             </Field>
           )}
 
-          <Field label="Unit">
+                   <Field
+            label="Unit"
+            hint="How this product is measured or sold — e.g. Piece, Bag, Carton, Litre. Helps keep your stock counts consistent."
+          >
             <Select
               value={
                 form.unitId
@@ -2508,9 +2563,9 @@ export default function Products() {
             </Field>
           )}
 
-          <Field
-            label="Low-stock threshold"
-            hint="Optional integer."
+                 <Field
+            label="Restock alert level"
+            hint="We'll flag this product as low stock once quantity drops to this number or below. Leave blank to turn off alerts for this product."
           >
             <Input
               type="number"
@@ -2700,13 +2755,12 @@ export default function Products() {
             </Button>
           </div>
         </div>
-
         {/* Variants */}
 
         <div className="mt-5">
           <div className="flex items-center justify-between">
             <label className="lbl !mb-0">
-              Variants
+              Variants (sizes, colors, etc.)
             </label>
 
             {!editing && (
@@ -2751,200 +2805,239 @@ export default function Products() {
           </div>
 
           <p className="mb-2 mt-1 text-xs text-ink-400">
+            Use variants if this product comes in more than one
+            version that you stock and sell separately — for
+            example a shirt in "Small", "Medium", "Large", or a
+            drink in "50cl" and "1 Litre". Each variant gets its
+            own price and its own stock count, tracked
+            separately from the main product.
+          </p>
+
+          {form.variantRows.length === 0 && !editing && (
+            <p className="mb-2 text-xs text-ink-400">
+              If this product only comes in one version, skip
+              this section entirely — the price and stock you
+              set above already cover it.
+            </p>
+          )}
+
+          <p className="mb-3 text-xs text-ink-400">
             {editing
-              ? "Variants are create-only and cannot be changed."
-              : "Variants are create-only. Maximum 50."}
+              ? "Variants can only be set up when a product is first created, so they can't be edited or removed here. To change variants, delete this product and create it again with the correct variants."
+              : `Variants can only be added right now, while creating the product — you won't be able to add, remove, or edit them later. You can add up to ${MAX_VARIANTS}.`}
           </p>
 
           {form.variantRows.map(
-            (variant) => (
+            (variant, index) => (
               <div
                 key={
                   variant.key
                 }
-                className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-cream-100 p-2"
+                className="mb-3 rounded-xl bg-cream-100 p-3"
               >
-                <Input
-                  className="w-40 flex-1"
-                  placeholder="Variant name"
-                  value={
-                    variant.name
-                  }
-                  disabled={
-                    !!editing
-                  }
-                  onChange={(
-                    e
-                  ) =>
-                    setForm(
-                      (
-                        current
-                      ) => ({
-                        ...current,
-                        variantRows:
-                          current.variantRows.map(
+                <p className="mb-2 text-xs font-bold text-ink-400">
+                  Variant {index + 1}
+                </p>
+
+                <div className="flex flex-wrap items-start gap-2">
+                  <div className="w-40 flex-1">
+                    <Input
+                      placeholder="e.g. Medium, Red, 50cl"
+                      value={
+                        variant.name
+                      }
+                      disabled={
+                        !!editing
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setForm(
+                          (
+                            current
+                          ) => ({
+                            ...current,
+                            variantRows:
+                              current.variantRows.map(
+                                (
+                                  row
+                                ) =>
+                                  row.key ===
+                                  variant.key
+                                    ? {
+                                        ...row,
+                                        name:
+                                          e
+                                            .target
+                                            .value,
+                                      }
+                                    : row
+                              ),
+                          })
+                        )
+                      }
+                    />
+                    <p className="mt-1 text-[11px] text-ink-400">
+                      Name customers will see
+                    </p>
+                  </div>
+
+                  <div className="w-28">
+                    <Input
+                      placeholder="Price"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        variant.sellingPrice
+                      }
+                      disabled={
+                        !!editing
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setForm(
+                          (
+                            current
+                          ) => ({
+                            ...current,
+                            variantRows:
+                              current.variantRows.map(
+                                (
+                                  row
+                                ) =>
+                                  row.key ===
+                                  variant.key
+                                    ? {
+                                        ...row,
+                                        sellingPrice:
+                                          e
+                                            .target
+                                            .value,
+                                      }
+                                    : row
+                              ),
+                          })
+                        )
+                      }
+                    />
+                    <p className="mt-1 text-[11px] text-ink-400">
+                      Leave blank to use the main price above
+                    </p>
+                  </div>
+
+                  <div className="w-24">
+                    <Input
+                      placeholder="Product code"
+                      maxLength={
+                        MAX_PRODUCT_SKU
+                      }
+                      value={
+                        variant.sku
+                      }
+                      disabled={
+                        !!editing
+                      }
+                      onChange={(e) =>
+                        setForm(
+                          (
+                            current
+                          ) => ({
+                            ...current,
+                            variantRows:
+                              current.variantRows.map(
+                                (
+                                  row
+                                ) =>
+                                  row.key ===
+                                  variant.key
+                                    ? {
+                                        ...row,
+                                        sku:
+                                          e
+                                            .target
+                                            .value,
+                                      }
+                                    : row
+                              ),
+                          })
+                        )
+                      }
+                    />
+                    <p className="mt-1 text-[11px] text-ink-400">
+                      Optional, your own reference
+                    </p>
+                  </div>
+
+                  {!editing && (
+                    <div className="w-24">
+                      <Input
+                        placeholder="Stock"
+                        type="number"
+                        min="1"
+                        max="1000000"
+                        value={
+                          variant.initialStock
+                        }
+                        onChange={(
+                          e
+                        ) =>
+                          setForm(
                             (
-                              row
-                            ) =>
-                              row.key ===
-                              variant.key
-                                ? {
-                                    ...row,
-                                    name:
-                                      e
-                                        .target
-                                        .value,
-                                  }
-                                : row
-                          ),
-                      })
-                    )
-                  }
-                />
+                              current
+                            ) => ({
+                              ...current,
+                              variantRows:
+                                current.variantRows.map(
+                                  (
+                                    row
+                                  ) =>
+                                    row.key ===
+                                    variant.key
+                                      ? {
+                                          ...row,
+                                          initialStock:
+                                            e
+                                              .target
+                                              .value,
+                                        }
+                                      : row
+                                ),
+                            })
+                          )
+                        }
+                      />
+                      <p className="mt-1 text-[11px] text-ink-400">
+                        How many you have of this variant
+                      </p>
+                    </div>
+                  )}
 
-                <Input
-                  className="w-28"
-                  placeholder="Price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={
-                    variant.sellingPrice
-                  }
-                  disabled={
-                    !!editing
-                  }
-                  onChange={(
-                    e
-                  ) =>
-                    setForm(
-                      (
-                        current
-                      ) => ({
-                        ...current,
-                        variantRows:
-                          current.variantRows.map(
-                            (
-                              row
-                            ) =>
-                              row.key ===
-                              variant.key
-                                ? {
-                                    ...row,
-                                    sellingPrice:
-                                      e
-                                        .target
-                                        .value,
-                                  }
-                                : row
-                          ),
-                      })
-                    )
-                  }
-                />
-
-                <Input
-                  className="w-24"
-                  placeholder="SKU"
-                  maxLength={
-                    MAX_PRODUCT_SKU
-                  }
-                  value={
-                    variant.sku
-                  }
-                  disabled={
-                    !!editing
-                  }
-                  onChange={(e) =>
-                    setForm(
-                      (
-                        current
-                      ) => ({
-                        ...current,
-                        variantRows:
-                          current.variantRows.map(
-                            (
-                              row
-                            ) =>
-                              row.key ===
-                              variant.key
-                                ? {
-                                    ...row,
-                                    sku:
-                                      e
-                                        .target
-                                        .value,
-                                  }
-                                : row
-                          ),
-                      })
-                    )
-                  }
-                />
-
-                {!editing && (
-                  <Input
-                    className="w-24"
-                    placeholder="Initial stock"
-                    type="number"
-                    min="1"
-                    max="1000000"
-                    value={
-                      variant.initialStock
-                    }
-                    onChange={(
-                      e
-                    ) =>
-                      setForm(
-                        (
-                          current
-                        ) => ({
-                          ...current,
-                          variantRows:
-                            current.variantRows.map(
-                              (
-                                row
-                              ) =>
-                                row.key ===
-                                variant.key
-                                  ? {
-                                      ...row,
-                                      initialStock:
-                                        e
-                                          .target
-                                          .value,
-                                    }
-                                  : row
-                            ),
-                        })
-                      )
-                    }
-                  />
-                )}
-
-                {!editing && (
-                  <IconBtn
-                    name="trash"
-                    label="Remove variant"
-                    onClick={() =>
-                      setForm(
-                        (
-                          current
-                        ) => ({
-                          ...current,
-                          variantRows:
-                            current.variantRows.filter(
-                              (
-                                row
-                              ) =>
-                                row.key !==
-                                variant.key
-                            ),
-                        })
-                      )
-                    }
-                  />
-                )}
+                  {!editing && (
+                    <IconBtn
+                      name="trash"
+                      label="Remove variant"
+                      onClick={() =>
+                        setForm(
+                          (
+                            current
+                          ) => ({
+                            ...current,
+                            variantRows:
+                              current.variantRows.filter(
+                                (
+                                  row
+                                ) =>
+                                  row.key !==
+                                  variant.key
+                              ),
+                          })
+                        )
+                      }
+                    />
+                  )}
+                </div>
               </div>
             )
           )}
