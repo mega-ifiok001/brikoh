@@ -22,11 +22,23 @@ import {
 
 const STATUSES = ["ALL", "DRAFT", "ISSUED", "PAID", "VOID"] as const;
 
+const MAX_QTY = 1_000_000;
+const MAX_PRICE = 99999999.99;
+
 interface LineRow {
   key: number;
   productId: string;
   quantity: string;
   unitPrice: string;
+}
+
+// Shared error -> message mapping. RATE_LIMITED is checked first everywhere
+// since writes on this resource are rate-limited (60s / 300 req).
+function apiErrorMessage(e: any, fallback: string, extra?: Record<string, string>) {
+  const code = e?.code;
+  if (code === "RATE_LIMITED") return "Too many requests — please slow down and try again.";
+  if (extra && code && extra[code]) return extra[code];
+  return e?.message || fallback;
 }
 
 export default function Invoices() {
@@ -40,15 +52,18 @@ export default function Invoices() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusF, setStatusF] = useState<(typeof STATUSES)[number]>("ALL");
+  const [q, setQ] = useState("");
+  const [qDebounced, setQDebounced] = useState("");
 
   // Catalog
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
 
-  // Create
+  // Create / Edit (PUT only touches dueDate + lineItems, never customerId)
   const [formOpen, setFormOpen] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [formErr, setFormErr] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [rows, setRows] = useState<LineRow[]>([]);
@@ -85,6 +100,12 @@ export default function Invoices() {
     }
   }, []);
 
+  // ---------- Search debounce ----------
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim()), 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
   // ---------- List ----------
   const load = useCallback(
     async (cursor?: string | null) => {
@@ -95,19 +116,20 @@ export default function Invoices() {
         const qs = new URLSearchParams();
         qs.set("limit", "24");
         if (statusF !== "ALL") qs.set("status", statusF);
+        if (qDebounced) qs.set("q", qDebounced);
         if (cursor) qs.set("cursor", cursor);
         const res = await api.get(`/api/dashboard/invoices?${qs.toString()}`);
         const list = asList(res, "items", "invoices", "data");
         setItems((prev) => (cursor ? [...prev, ...list] : list));
         setNextCursor(pick(res, ["nextCursor", "after", "cursor", "next"]) ?? null);
       } catch (e: any) {
-        setError(e?.message || "Couldn't load invoices.");
+        setError(apiErrorMessage(e, "Couldn't load invoices."));
       } finally {
         setLoading(false);
         setLoadingMore(false);
       }
     },
-    [statusF]
+    [statusF, qDebounced]
   );
 
   useEffect(() => {
@@ -120,9 +142,30 @@ export default function Invoices() {
 
   // ---------- Create ----------
   const openCreate = () => {
+    setEditingId(null);
     setCustomerId(customers[0]?.id || "");
     setDueDate("");
     setRows([{ key: Date.now(), productId: "", quantity: "1", unitPrice: "" }]);
+    setFormErr("");
+    setFormOpen(true);
+  };
+
+  // Edit only ever applies to a DRAFT, and PUT never changes the customer.
+  const openEdit = (inv: any, currentLineItems: any[]) => {
+    setEditingId(inv.id);
+    setCustomerId(inv.customer?.id || inv.customerId || "");
+    setDueDate(inv.dueDate ? String(inv.dueDate).slice(0, 10) : "");
+    setRows(
+      (currentLineItems.length
+        ? currentLineItems
+        : [{ productId: "", quantity: 1, unitPriceAtIssue: "" }]
+      ).map((li: any, idx: number) => ({
+        key: Date.now() + idx,
+        productId: li.productId,
+        quantity: String(li.quantity ?? 1),
+        unitPrice: String(li.unitPriceAtIssue ?? ""),
+      }))
+    );
     setFormErr("");
     setFormOpen(true);
   };
@@ -132,36 +175,67 @@ export default function Invoices() {
     0
   );
 
-  const submit = async () => {
-    const lineItemsPayload = rows
-      .filter((r) => r.productId)
-      .map((r) => ({
-        productId: r.productId,
-        quantity: parseInt(r.quantity, 10) || 1,
-        unitPriceAtIssue: String(parseFloat(r.unitPrice) || 0), // decimal string
-      }));
-
-    if (!customerId) return setFormErr("Pick a customer.");
-    if (!lineItemsPayload.length) return setFormErr("Add at least one line.");
-    if (lineItemsPayload.some((li) => parseFloat(li.unitPriceAtIssue) <= 0)) {
-      return setFormErr("Every line needs a price greater than zero.");
+  const validateRows = () => {
+    const cleaned = rows.filter((r) => r.productId);
+    if (!cleaned.length) return { err: "Add at least one line." };
+    for (const r of cleaned) {
+      const qty = parseInt(r.quantity, 10);
+      const price = parseFloat(r.unitPrice);
+      if (!Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) {
+        return { err: `Quantity must be between 1 and ${MAX_QTY.toLocaleString()}.` };
+      }
+      if (!(price > 0) || price > MAX_PRICE) {
+        return { err: `Price must be greater than 0 and at most ${MAX_PRICE.toLocaleString()}.` };
+      }
     }
+    return {
+      cleaned: cleaned.map((r) => ({
+        productId: r.productId,
+        quantity: parseInt(r.quantity, 10),
+        unitPriceAtIssue: String(parseFloat(r.unitPrice)),
+      })),
+    };
+  };
+
+  const submit = async () => {
+    const { cleaned, err } = validateRows();
+    if (err) return setFormErr(err);
+    if (!editingId && !customerId) return setFormErr("Pick a customer.");
 
     setFormBusy(true);
     setFormErr("");
     try {
-      await api.post("/api/dashboard/invoices", {
-        customerId,
-        dueDate: dueDate
-          ? new Date(dueDate + "T00:00:00.000Z").toISOString()
-          : undefined,
-        lineItems: lineItemsPayload,
-      });
-      toast.success("Draft invoice saved — issue it when you're ready.");
+      const dueDateIso = dueDate
+        ? new Date(dueDate + "T00:00:00.000Z").toISOString()
+        : editingId
+        ? null // PUT allows explicit null to clear
+        : undefined;
+
+      if (editingId) {
+        await api.put(`/api/dashboard/invoices/${editingId}`, {
+          dueDate: dueDateIso,
+          lineItems: cleaned,
+        });
+        toast.success("Draft updated.");
+      } else {
+        await api.post("/api/dashboard/invoices", {
+          customerId,
+          dueDate: dueDateIso,
+          lineItems: cleaned,
+        });
+        toast.success("Draft invoice saved — issue it when you're ready.");
+      }
       setFormOpen(false);
+      if (editingId) openDetail(editingId);
       load();
     } catch (e: any) {
-      setFormErr(e?.message || "Couldn't create the invoice.");
+      setFormErr(
+        apiErrorMessage(e, editingId ? "Couldn't update the invoice." : "Couldn't create the invoice.", {
+          INVOICE_NOT_DRAFT: "This invoice is no longer a draft and can't be edited.",
+          PRODUCT_NOT_FOUND: "One of the selected products no longer exists.",
+          CUSTOMER_NOT_FOUND: "That customer no longer exists.",
+        })
+      );
     } finally {
       setFormBusy(false);
     }
@@ -181,7 +255,7 @@ export default function Invoices() {
       setPayments(Array.isArray(res?.payments) ? res.payments : inv?.payments || []);
     } catch (e: any) {
       setDetail(null);
-      toast.error(e?.message || "Couldn't open the invoice.");
+      toast.error(apiErrorMessage(e, "Couldn't open the invoice."));
     } finally {
       setDetailBusy(false);
     }
@@ -196,7 +270,11 @@ export default function Invoices() {
       openDetail(inv.id);
       load();
     } catch (e: any) {
-      toast.error(e?.message || "Couldn't issue the invoice.");
+      toast.error(
+        apiErrorMessage(e, "Couldn't issue the invoice.", {
+          INVOICE_NOT_DRAFT: "This invoice has already been issued.",
+        })
+      );
     } finally {
       setActionBusy(false);
     }
@@ -209,26 +287,30 @@ export default function Invoices() {
       toast.error("Enter a positive amount.");
       return;
     }
+    if (Number(amount) > MAX_PRICE) {
+      toast.error(`Amount can't exceed ${MAX_PRICE.toLocaleString()}.`);
+      return;
+    }
     setPayBusy(true);
     try {
-      await api.post(`/api/dashboard/invoices/${detail.id}/payments`, {
+      const res: any = await api.post(`/api/dashboard/invoices/${detail.id}/payments`, {
         amount, // decimal string
         note: payNote.trim() || undefined,
       });
-      toast.success("Payment recorded.");
+      const settled = res?.status === "PAID";
+      toast.success(settled ? "Payment recorded — invoice fully paid." : "Payment recorded.");
       setPayOpen(false);
       setPayAmount("");
       setPayNote("");
       openDetail(detail.id);
       load();
     } catch (e: any) {
-      const msg =
-        e?.code === "PAYMENT_EXCEEDS_BALANCE"
-          ? "Amount exceeds the remaining balance."
-          : e?.code === "INVOICE_NOT_ISSUED"
-          ? "Only issued invoices can receive payments."
-          : e?.message || "Couldn't record the payment.";
-      toast.error(msg);
+      toast.error(
+        apiErrorMessage(e, "Couldn't record the payment.", {
+          PAYMENT_EXCEEDS_BALANCE: "Amount exceeds the remaining balance.",
+          INVOICE_NOT_ISSUED: "Only issued invoices can receive payments.",
+        })
+      );
     } finally {
       setPayBusy(false);
     }
@@ -245,13 +327,12 @@ export default function Invoices() {
       if (detail?.id === voidFor.id) openDetail(voidFor.id);
       load();
     } catch (e: any) {
-      const msg =
-        e?.code === "INVOICE_HAS_PAYMENTS"
-          ? "Invoices with payments can't be voided."
-          : e?.code === "INVOICE_NOT_ISSUED"
-          ? "Only issued invoices can be voided."
-          : e?.message || "Couldn't void the invoice.";
-      toast.error(msg);
+      toast.error(
+        apiErrorMessage(e, "Couldn't void the invoice.", {
+          INVOICE_HAS_PAYMENTS: "Invoices with payments can't be voided.",
+          INVOICE_NOT_ISSUED: "Only issued invoices can be voided.",
+        })
+      );
     } finally {
       setActionBusy(false);
     }
@@ -268,22 +349,31 @@ export default function Invoices() {
       if (detail?.id === delFor.id) setDetail(null);
       load();
     } catch (e: any) {
-      const msg =
-        e?.code === "INVOICE_NOT_DRAFT"
-          ? "Only draft invoices can be deleted. Issued invoices must be voided."
-          : e?.message || "Couldn't delete the invoice.";
-      toast.error(msg);
+      toast.error(
+        apiErrorMessage(e, "Couldn't delete the invoice.", {
+          INVOICE_NOT_DRAFT: "Only draft invoices can be deleted. Issued invoices must be voided.",
+        })
+      );
     } finally {
       setDelBusy(false);
     }
   };
 
-  const custName = (i: any) =>
-    i.customer?.name || i.customerName || "—";
+  const custName = (i: any) => i.customer?.name || i.customerName || "—";
 
   const balanceOf = (inv: any) => {
     if (inv?.balanceDue != null) return rawNum(inv.balanceDue);
     return rawNum(inv?.total) - rawNum(inv?.amountPaid);
+  };
+
+  const copyShareLink = async () => {
+    if (!detail?.shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(detail.shareUrl);
+      toast.success("Link copied.");
+    } catch {
+      toast.error("Couldn't copy the link — copy it manually.");
+    }
   };
 
   return (
@@ -297,17 +387,26 @@ export default function Invoices() {
         </Button>
       </PageHead>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {STATUSES.map((s) => (
-          <button
-            key={s}
-            type="button"
-            className={cls("chip", statusF === s && "chip-on")}
-            onClick={() => setStatusF(s)}
-          >
-            {s === "ALL" ? "All" : titleCase(s)}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-1.5">
+          {STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={cls("chip", statusF === s && "chip-on")}
+              onClick={() => setStatusF(s)}
+            >
+              {s === "ALL" ? "All" : titleCase(s)}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto w-full max-w-[240px]">
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search customer name or phone…"
+          />
+        </div>
       </div>
 
       {loading ? (
@@ -385,12 +484,16 @@ export default function Invoices() {
         </div>
       )}
 
-      {/* ---------- New invoice ---------- */}
+      {/* ---------- New / Edit invoice ---------- */}
       <Modal
         open={formOpen}
         onClose={() => setFormOpen(false)}
-        title="New invoice"
-        sub="Saved as a draft — issue it to stamp a number."
+        title={editingId ? "Edit draft" : "New invoice"}
+        sub={
+          editingId
+            ? "Line items and due date only — the customer can't be changed on a draft."
+            : "Saved as a draft — issue it to stamp a number."
+        }
         wide
         footer={
           <>
@@ -404,7 +507,7 @@ export default function Invoices() {
               Cancel
             </Button>
             <Button loading={formBusy} onClick={submit} icon="check">
-              Save draft
+              {editingId ? "Save changes" : "Save draft"}
             </Button>
           </>
         }
@@ -416,17 +519,21 @@ export default function Invoices() {
         )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Customer">
-            <Select
-              value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
-            >
-              <option value="">Choose a customer…</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            {editingId ? (
+              <Input value={custName(detail || {})} disabled readOnly />
+            ) : (
+              <Select
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+              >
+                <option value="">Choose a customer…</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            )}
           </Field>
           <Field label="Due date">
             <Input
@@ -493,6 +600,7 @@ export default function Invoices() {
                   className="w-20"
                   type="number"
                   min="1"
+                  max={MAX_QTY}
                   value={r.quantity}
                   onChange={(e) =>
                     setRows((rs) =>
@@ -507,6 +615,7 @@ export default function Invoices() {
                   className="w-28"
                   type="number"
                   min="0"
+                  max={MAX_PRICE}
                   step="0.01"
                   value={r.unitPrice}
                   onChange={(e) =>
@@ -566,6 +675,13 @@ export default function Invoices() {
                     Delete draft
                   </Button>
                   <Button
+                    variant="outline"
+                    onClick={() => openEdit(detail, lineItems)}
+                    icon="pencil"
+                  >
+                    Edit
+                  </Button>
+                  <Button
                     loading={actionBusy}
                     onClick={() => issue(detail)}
                     icon="send"
@@ -579,6 +695,12 @@ export default function Invoices() {
                   <Button
                     variant="outline"
                     className="mr-auto"
+                    disabled={rawNum(detail.amountPaid) > 0}
+                    title={
+                      rawNum(detail.amountPaid) > 0
+                        ? "Invoices with payments can't be voided"
+                        : undefined
+                    }
                     onClick={() => setVoidFor(detail)}
                   >
                     Void
@@ -617,6 +739,20 @@ export default function Invoices() {
           </div>
         ) : (
           <div>
+            {detail.shareUrl && (
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink-400">
+                    Customer link
+                  </p>
+                  <p className="truncate text-sm text-ink-600">{detail.shareUrl}</p>
+                </div>
+                <Button variant="outline" size="sm" icon="copy" onClick={copyShareLink}>
+                  Copy
+                </Button>
+              </div>
+            )}
+
             <div className="overflow-x-auto rounded-xl border border-cream-200">
               <table className="tbl">
                 <thead>
