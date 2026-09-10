@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api, API_BASE, getAccessToken } from "../lib/api";
-import { cls, fd, rawNum, titleCase } from "../lib/format";
+import { asList, cls, fd, pick, rawNum, titleCase } from "../lib/format";
 import {
   Badge,
   Button,
@@ -32,6 +32,7 @@ export default function Reports() {
   const [byCategory, setByCategory] = useState<any[]>([]);
   const [grandTotal, setGrandTotal] = useState<string>("0.00");
   const [inventory, setInventory] = useState<any>(null);
+  const [invoicePaymentsReceived, setInvoicePaymentsReceived] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,6 +54,33 @@ export default function Reports() {
       );
       setGrandTotal(expRes?.grandTotal ?? "0.00");
       setInventory(invRes);
+
+      // Invoice payments received — sum amountPaid across all non-draft invoices.
+
+
+
+      // The invoices list API has no date-range filter, so this is all-time.
+
+
+      try {
+        let cursor: string | null = null;
+        let totalInvoicePayments = 0;
+        do {
+          const qs = new URLSearchParams({ limit: "100" });
+          if (cursor) qs.set("cursor", cursor);
+          const res: any = await api.get(`/api/dashboard/invoices?${qs.toString()}`);
+          const list = asList(res, "items", "invoices", "data");
+          for (const inv of list) {
+            if (inv.status === "PAID" || inv.status === "ISSUED") {
+              totalInvoicePayments += rawNum(inv.amountPaid);
+            }
+          }
+          cursor = pick(res, ["nextCursor", "after", "cursor", "next"]) ?? null;
+        } while (cursor);
+        setInvoicePaymentsReceived(totalInvoicePayments);
+      } catch {
+        setInvoicePaymentsReceived(0);
+      }
     } catch (e: any) {
       if (e?.status === 403 || e?.code === "INSUFFICIENT_PERMISSIONS") {
         setError(
@@ -64,6 +92,7 @@ export default function Reports() {
       setPnl(null);
       setByCategory([]);
       setInventory(null);
+      setInvoicePaymentsReceived(0);
     } finally {
       setLoading(false);
     }
@@ -194,6 +223,13 @@ export default function Reports() {
           icon="banknote"
           tone="gold"
           sub={`${byCategory.length} categor${byCategory.length === 1 ? "y" : "ies"}`}
+        />
+        <StatCard
+          label="Invoice payments received"
+          value={<Money v={invoicePaymentsReceived} currency={currency} />}
+          icon="file"
+          tone="brand"
+          sub="All payments recorded on invoices"
         />
         <div
           className={cls(
