@@ -46,7 +46,7 @@ export default function PublicInvoicePage() {
       setLoading(true);
       setError(null);
       try {
-        const res: any = await api.post(`/api/public/invoices/${invoiceId}`);
+        const res: any = await api.publicPost(`/api/public/invoices/${invoiceId}`);
         if (!cancelled) setData(res);
       } catch (e: any) {
         if (!cancelled) {
