@@ -366,10 +366,20 @@ export default function Invoices() {
     return rawNum(inv?.total) - rawNum(inv?.amountPaid);
   };
 
+  // Defensive: the backend builds shareUrl from a configured origin env var.
+  // If that var is ever set without a scheme (e.g. "brikoh.com" instead of
+  // "https://brikoh.com"), fall back to https:// rather than showing/copying
+  // a broken relative link.
+  const normalizedShareUrl = (url: string | null | undefined) => {
+    if (!url) return null;
+    return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  };
+
   const copyShareLink = async () => {
-    if (!detail?.shareUrl) return;
+    const url = normalizedShareUrl(detail?.shareUrl);
+    if (!url) return;
     try {
-      await navigator.clipboard.writeText(detail.shareUrl);
+      await navigator.clipboard.writeText(url);
       toast.success("Link copied.");
     } catch {
       toast.error("Couldn't copy the link — copy it manually.");
@@ -739,13 +749,15 @@ export default function Invoices() {
           </div>
         ) : (
           <div>
-            {detail.shareUrl && (
+            {normalizedShareUrl(detail.shareUrl) && (
               <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5">
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-wide text-ink-400">
                     Customer link
                   </p>
-                  <p className="truncate text-sm text-ink-600">{detail.shareUrl}</p>
+                  <p className="truncate text-sm text-ink-600">
+                    {normalizedShareUrl(detail.shareUrl)}
+                  </p>
                 </div>
                 <Button variant="outline" size="sm" icon="copy" onClick={copyShareLink}>
                   Copy

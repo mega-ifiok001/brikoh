@@ -24,6 +24,7 @@ import Staff from "./pages/Staff";
 import SettingsPage from "./pages/SettingsPage";
 import StoreView from "./pages/StoreView";
 import Tickets from "./pages/Tickets";
+import PublicInvoicePage from "./pages/PublicInvoicePage";
 
 // ── Cross-subdomain config ────────────────────────────────────────────────
 // The SAME build is deployed to brikoh.com, dashboard.brikoh.com, and every
@@ -179,6 +180,10 @@ export default function App() {
           />
           <Route path="/verify" element={<VerifyPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          {/* Public, unauthenticated invoice view — the link merchants copy
+              from the invoice detail page (`shareUrl`) and hand to their
+              customer. Must NOT be behind RequireAuth. */}
+          <Route path="/invoice/:invoiceId" element={<PublicInvoicePage />} />
           <Route path="/s/:subdomain" element={<StoreView />} />
           <Route path="/s/:subdomain/p/:productId" element={<StoreView />} />
           {/* On a merchant's own subdomain, also let bare "/p/:productId"
