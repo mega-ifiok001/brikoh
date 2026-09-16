@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { slugify } from "../lib/format";
@@ -38,6 +38,9 @@ function labelOf(v: string) {
 export default function Onboarding() {
   const { me, isOnboarded, isVerified, refresh } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const pendingPlan =
+    searchParams.get("plan") || sessionStorage.getItem("brikoh.pendingPlan");
 
   const [storeName, setStoreName] = useState("");
   const [subdomain, setSubdomain] = useState("");
@@ -113,7 +116,8 @@ export default function Onboarding() {
       });
       toast.success(`Welcome to Brikoh, ${trimmedName}!`);
       await refresh();
-      navigate("/dashboard", { replace: true });
+      try { sessionStorage.removeItem("brikoh.pendingPlan"); } catch {}
+      navigate(pendingPlan ? "/dashboard/settings/billing" : "/dashboard", { replace: true });
     } catch (err: any) {
       if (err?.code === "VERIFICATION_REQUIRED") {
         toast.error("Verify your email first.");

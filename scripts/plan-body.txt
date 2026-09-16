@@ -1,0 +1,195 @@
+const fs = require('fs');
+
+// Part 1: State + plan header + usage
+const p1 = [
+'',
+'  const plan = data?.plan;',
+'  const usage = data?.usage || {};',
+'  const limits = plan?.limits || {};',
+'  const flags = plan?.featureFlags || {};',
+'  const period = data?.period;',
+'  const currentTier = plan?.tier || "STARTER";',
+'  const subscriptionStatus = plan?.status || "ACTIVE";',
+'  const isActive = plan?.active === true;',
+'  const pendingDowngrade = data?.pendingDowngrade;',
+'',
+'  const rows = [',
+'    { label: "Staff", used: usage.staff ?? 0, cap: limits.staffCap },',
+'    { label: "Locations", used: usage.locations ?? 0, cap: limits.locationCap },',
+'    { label: "Products", used: usage.products ?? 0, cap: limits.productCap },',
+'    { label: "Orders (period)", used: usage.orders ?? 0, cap: limits.orderCap },',
+'  ];',
+'',
+'  const capLabel = (cap) => cap == null ? "Unlimited" : String(cap);',
+'  const pct = (u, c) => { if (c == null || c <= 0) return 0; return Math.min(100, Math.round((u/c)*100)); };',
+'  const barTone = (u, c) => { if (c == null) return "bg-leaf-500"; const p=u/c; if(p>=1) return "bg-danger-500"; if(p>=0.85) return "bg-amber-500"; return "bg-leaf-500"; };',
+'',
+'  const availableTiers = TIERS.map(t => t.id);',
+'  const higherTiers = availableTiers.filter(t => isHigherTier(currentTier, t));',
+'  const lowerTiers = availableTiers.filter(t => isLowerTier(currentTier, t));',
+'',
+'  if (!plan) {',
+'    return (',
+'      <div className="card anim-rise max-w-2xl p-6"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gold-100 text-gold-600"><Icon name="zap" size={20} /></span><div><p className="font-display text-lg font-extrabold">No active plan</p><p className="text-sm text-ink-400">You are running without subscription limits.</p></div></div></div>',
+'    );',
+'  }',
+'',
+'  return (',
+'    <div className="max-w-2xl space-y-5">',
+'      {pendingDowngrade && (',
+'        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><div className="flex items-start gap-3"><Icon name="alert" size={20} className="mt-0.5 text-amber-600" /><div className="min-w-0"><p className="text-sm font-bold text-amber-800">Downgrade scheduled to {pendingDowngrade.tier}</p><p className="mt-0.5 text-xs text-amber-700">Features switch on {new Date(pendingDowngrade.effectiveAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.</p></div></div></div>',
+'      )}',
+'',
+'      <div className="card anim-rise p-6">',
+'        <div className="flex flex-wrap items-center justify-between gap-3">',
+'          <div><p className="font-display text-lg font-extrabold">{titleCase(plan.tier || "Starter")} plan</p>{period?.start && period?.end && <p className="text-sm text-ink-400">Period {fd(period.start)} to {fd(period.end)}</p>}</div>',
+'          <Badge tone={subscriptionStatus==="ACTIVE"?"green":subscriptionStatus==="TRIALING"?"brand":subscriptionStatus==="PAST_DUE"?"danger":"neutral"}>{titleCase(subscriptionStatus || "—")}</Badge>',
+'        </div>',
+'        <div className="mt-4 flex flex-wrap gap-2">',
+'          <Badge tone={flags.customDomain?"green":"neutral"}>Custom domain {flags.customDomain?"✓":"—"}</Badge>',
+'          <Badge tone={flags.advancedAnalytics?"green":"neutral"}>Advanced analytics {flags.advancedAnalytics?"✓":"—"}</Badge>',
+'          <Badge tone={flags.marketingTools?"green":"neutral"}>Marketing tools {flags.marketingTools?"✓":"—"}</Badge>',
+'          <Badge tone="neutral">Templates: {capLabel(limits.templateCap)}</Badge>',
+'        </div>',
+'      </div>',
+'',
+'      <div className="card anim-rise p-6">',
+'        <h3 className="font-display text-base font-extrabold">Usage</h3>',
+'        <p className="text-xs text-ink-400">Live counts against your plan caps. Hitting a cap blocks new creates.</p>',
+'        <div className="mt-4 space-y-4">',
+'          {rows.map(r => (',
+'            <div key={r.label}><div className="mb-1 flex items-center justify-between text-sm"><span className="font-bold text-ink-700">{r.label}</span><span className="tabular-nums text-ink-500"><strong className="text-ink-800">{r.used}</strong> {" / "} {capLabel(r.cap)}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-cream-100"><div className={"h-full rounded-full transition-all " + barTone(r.used, r.cap)} style={{ width: r.cap==null ? "8%" : `${Math.max(4,pct(r.used,r.cap))}%` }} /></div></div>',
+'          ))}',
+'        </div>',
+'      </div>',
+].join('\n');
+
+fs.writeFileSync('scripts/plan-body.txt', p1);
+console.log('Part 1 written:', p1.length, 'chars');
+
+      <div className="card anim-rise p-6">
+        <div className="flex items-center gap-2"><Icon name="settings" size={18} className="text-ink-400" /><h3 className="font-display text-base font-extrabold">Subscription</h3></div>
+        <p className="mt-0.5 text-xs text-ink-400">Subscribe, upgrade, downgrade, or cancel.</p>
+        <div className="mt-4 flex gap-1 border-b border-cream-200">
+          {[
+            { id: "history", label: "History" },
+            ...((isActive || !!plan?.tier) ? [
+              { id: "upgrade", label: "Upgrade" },
+              { id: "downgrade", label: "Downgrade" },
+              { id: "cancel", label: "Cancel" },
+            ] : [
+              { id: "subscribe", label: "Subscribe" },
+            ]),
+          ].map(t => (
+            <button key={t.id} onClick={() => setActionTab(t.id)} className={"border-b-2 px-3.5 py-2 text-sm font-bold transition-colors -mb-px " + (actionTab===t.id ? "border-brand-500 text-brand-600" : "border-transparent text-ink-400 hover:text-ink-700")}>{t.label}</button>
+          ))}
+        </div>
+
+        {actionTab==="subscribe" && (
+          <div className="mt-5 space-y-4">
+            <p className="text-sm text-ink-500">Choose a plan. Redirected to Paystack.</p>
+            <div className="space-y-3">              {TIERS.map(t => (
+                <label key={t.id} className={"flex items-start gap-3 rounded-xl border-2 px-4 py-3.5 transition-colors " + (checkoutTier===t.id ? "border-brand-500 bg-brand-50" : "border-cream-200 hover:border-cream-300")}>
+                  <input type="radio" name="checkoutTier" value={t.id} checked={checkoutTier===t.id} onChange={e => setCheckoutTier(e.target.value)} className="mt-0.5" />
+                  <div className="min-w-0"><p className="font-bold">{t.label}</p><p className="text-xs text-ink-400">{t.hint}</p><p className="mt-1 text-sm font-extrabold tabular-nums"><Money v={tierPrice(t.id)} currency="NGN" strong /> /mo</p></div>
+                </label>
+              ))}
+            </div>
+            <Button loading={checkoutBusy} onClick={doCheckout} icon="key" className="w-full">Start checkout</Button>
+          </div>
+        )}
+
+        {actionTab==="upgrade" && (
+          <div className="mt-5 space-y-4">
+            <p className="text-sm text-ink-500">Upgrade to a higher tier. Prorated charge applies.</p>
+            {higherTiers.length===0 ? (<p className="rounded-xl bg-gold-50 px-4 py-3 text-sm font-semibold text-gold-700">Already on highest tier.</p>) : (
+              <><div className="space-y-3">
+                {higherTiers.map(t => (
+                  <label key={t} className={"flex items-start gap-3 rounded-xl border-2 px-4 py-3.5 transition-colors " + (upgradeTier===t ? "border-brand-500 bg-brand-50" : "border-cream-200 hover:border-cream-300")}>
+                    <input type="radio" name="upgradeTier" value={t} checked={upgradeTier===t} onChange={e => setUpgradeTier(e.target.value)} className="mt-0.5" />
+                    <div className="min-w-0"><p className="font-bold">{titleCase(t)}</p><p className="text-xs text-ink-400">{TIERS.find(x => x.id===t)?.hint}</p></div>
+                  </label>
+                ))}
+              </div>              <Button loading={upgradeBusy} onClick={doUpgrade} icon="zap" className="w-full">Upgrade now</Button></>
+            )}
+          </div>
+        )}
+
+        {actionTab==="downgrade" && (
+          <div className="mt-5 space-y-4">
+            <p className="text-sm text-ink-500">Downgrade deferred. Keeps current tier until period end.</p>
+            {lowerTiers.length===0 ? (<p className="rounded-xl bg-gold-50 px-4 py-3 text-sm font-semibold text-gold-700">Already on lowest tier.</p>) : (
+              <><div className="space-y-3">
+                {lowerTiers.map(t => (
+                  <label key={t} className={"flex items-start gap-3 rounded-xl border-2 px-4 py-3.5 transition-colors " + (downgradeTier===t ? "border-brand-500 bg-brand-50" : "border-cream-200 hover:border-cream-300")}>
+                    <input type="radio" name="downgradeTier" value={t} checked={downgradeTier===t} onChange={e => setDowngradeTier(e.target.value)} className="mt-0.5" />
+                    <div className="min-w-0"><p className="font-bold">{titleCase(t)}</p><p className="text-xs text-ink-400">{TIERS.find(x => x.id===t)?.hint}</p></div>
+                  </label>
+                ))}
+              </div>              {downgradePreview && downgradePreview.warnings?.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-bold text-amber-800">Changes at downgrade:</p><ul className="mt-2 space-y-1">{downgradePreview.warnings.map((w, i) => (<li key={i} className="text-sm text-amber-700">{w.message}</li>))}</ul></div>
+              )}
+              {downgradePreviewBusy && <div className="mt-3 flex items-center gap-2 text-sm text-ink-400"><div className="h-4 w-4 animate-spin rounded-full border-2 border-cream-200 border-t-brand-500" />Loading...</div>}
+              <Button loading={downgradeBusy} onClick={doDowngrade} icon="clock" className="w-full">Schedule downgrade</Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {actionTab==="cancel" && (
+          <div className="mt-5">
+            <p className="text-sm text-ink-500">Cancels Paystack recurring subscription.</p>
+            {!cancelConfirm ? (
+              <Button variant="outline" danger onClick={() => setCancelConfirm(true)} className="mt-3 w-full">Cancel subscription</Button>
+            ) : (
+              <div className="mt-3 rounded-xl border border-danger-200 bg-danger-50 p-4"><p className="text-sm font-bold text-danger-700">Are you sure? Cannot be undone.</p><p className="mt-1 text-xs text-danger-600">Reverts to Starter after period end.</p><div className="mt-4 flex gap-2"><Button variant="ghost" onClick={() => setCancelConfirm(false)}>Go back</Button><Button danger loading={cancelBusy} onClick={doCancel}>Yes cancel</Button></div></div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="card anim-rise p-6">
+        <h3 className="font-display text-base font-extrabold">Billing history</h3>
+        <p className="mt-0.5 text-xs text-ink-400">All subscription payments, upgrades, and renewals. Newest first.</p>
+        {paymentsLoading ? (
+          <div className="mt-4 space-y-3">{[1,2,3].map(i => <div key={i} className="h-12 skeleton rounded-xl" />)}</div>
+        ) : payments.length === 0 ? (
+          <p className="mt-4 rounded-xl bg-cream-50 px-4 py-6 text-center text-sm font-semibold text-ink-400">No billing activity yet.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto scrollbar-slim"><table className="tbl"><thead><tr><th>Reference</th><th>Tier</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody>
+            {payments.map(p => (
+              <tr key={p.id} className="cursor-pointer hover:bg-cream-50"><td><span className="font-mono text-xs font-bold">{p.reference || "—"}</span></td><td>{titleCase(p.tier)}</td><td><Badge tone="neutral">{titleCase(p.kind)}</Badge></td><td className="text-right tabular-nums"><Money v={p.amount} currency="NGN" /></td><td><StatusBadge status={p.status} /></td><td className="text-ink-400 text-xs">{fd(p.createdAt)}</td><td><Button variant="ghost" size="sm" icon="eye" onClick={() => viewPayment(p.id)} title="View details" /></td></tr>
+            ))}
+          </tbody></table></div>
+        )}
+      </div>
+
+      <Modal open={!!selectedPayment} onClose={() => setSelectedPayment(null)} title="Payment details" wide>
+        {selectedPayment && (
+          <div className="space-y-4"><div className="grid grid-cols-2 gap-4">
+            <Field label="Reference"><Input value={selectedPayment.reference || ""} disabled /></Field>
+            <Field label="Tier"><Input value={titleCase(selectedPayment.tier)} disabled /></Field>
+            <Field label="Type"><Input value={titleCase(selectedPayment.kind)} disabled /></Field>
+            <Field label="Status"><Input value={titleCase(selectedPayment.status)} disabled /></Field>
+            <Field label="Amount"><Input value={selectedPayment.amount || "0.00"} disabled /></Field>
+            <Field label="Provider ref"><Input value={selectedPayment.providerRef || "—"} disabled /></Field>
+          </div><div className="grid grid-cols-2 gap-4">
+            <Field label="Created"><Input value={fd(selectedPayment.createdAt)} disabled /></Field>
+            <Field label="Paid at"><Input value={fd(selectedPayment.paidAt)} disabled /></Field>
+          </div>
+          {selectedPayment.orphanReason && (<div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-bold text-amber-800">Orphan (no local effect)</p><p className="mt-1 text-xs text-amber-700">{selectedPayment.orphanReason}</p></div>)}
+          </div>
+        )}
+      </Modal>
+
+      <div className="card anim-rise p-6">
+        <h3 className="font-display text-base font-extrabold">Custom domain</h3>
+        {!flags.customDomain ? (
+          <p className="mt-2 text-sm text-ink-500">Custom domains are available on <strong>Pro</strong> and <strong>Enterprise</strong>. Upgrade to point your own domain at the storefront.</p>
+        ) : (
+          <><p className="mt-1 text-xs text-ink-400">Point a CNAME at your Brikoh storefront, then save the domain here.</p><div className="mt-4 flex flex-wrap items-end gap-3"><div className="min-w-[220px] flex-1"><Field label="Domain"><Input value={domain} onChange={e => setDomain(e.target.value)} placeholder="shop.yourbrand.com" /></Field></div><Button loading={domainBusy} onClick={saveDomain} icon="check">Save domain</Button></div></>
+        )}
+      </div>
+
+      <p className="text-center text-xs text-ink-400">Caps only block new creates. Existing data is never deleted. Contact support to upgrade.</p>
+    </div>
+  );

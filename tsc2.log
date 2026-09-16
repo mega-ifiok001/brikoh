@@ -1,0 +1,3 @@
+src/components/Layout.tsx(52,62): error TS2322: Type '"analytics"' is not assignable to type 'Feature'.
+src/pages/Orders.tsx(181,36): error TS18048: 'amount' is possibly 'undefined'.
+src/pages/Products.tsx(1634,15): error TS6133: 'index' is declared but its value is never read.

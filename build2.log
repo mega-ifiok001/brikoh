@@ -1,0 +1,11 @@
+[36mvite v7.3.2 [32mbuilding client environment for production...[36m[39m
+transforming...
+[32m✓[39m 72 modules transformed.
+rendering chunks...
+[plugin vite:singlefile] 
+
+[plugin vite:singlefile] Inlining: index-CQ_ZmWLF.js
+[plugin vite:singlefile] Inlining: style-PikzHQx5.css
+computing gzip size...
+[2mdist/[22m[32mindex.html  [39m[1m[2m684.51 kB[22m[1m[22m[2m │ gzip: 181.56 kB[22m
+[32m✓ built in 18.07s[39m

@@ -338,6 +338,7 @@ function checkoutErrorMessage(e: any): string {
     ORDER_NOT_PENDING: "This order can no longer be marked as awaiting payment.",
     ORDER_NOT_FOUND: "We couldn't find that order.",
     RATE_LIMITED: "Too many attempts — please wait a moment and try again.",
+    ORDER_LIMIT_REACHED: "You have reached your plan's order limit for this billing period.",
   };
 
   if (e?.status === 429 || code === "RATE_LIMITED") return map.RATE_LIMITED;

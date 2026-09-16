@@ -230,6 +230,7 @@ export default function App() {
             <Route path="staff" element={<Staff />} />
             <Route path="tickets" element={<Tickets />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="settings/billing" element={<SettingsPage initialTab="plan" />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

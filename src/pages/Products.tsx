@@ -994,8 +994,10 @@ export default function Products() {
       await load();
     } catch (e: any) {
       setFormErr(
-        e?.message ||
-          "Couldn't save the product."
+        e?.code === "PRODUCT_LIMIT_REACHED"
+          ? "You have reached your plan's product limit. Upgrade to add more."
+          : e?.message ||
+            "Couldn't save the product."
       );
     } finally {
       setFormBusy(false);
@@ -1629,7 +1631,7 @@ export default function Products() {
           .map(
             (
               values,
-              index
+              _index
             ) => {
               const value = (
                 columnIndex: number

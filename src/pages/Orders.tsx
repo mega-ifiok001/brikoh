@@ -178,7 +178,7 @@ export default function Orders() {
 
     if (
       confirmAmount.trim() !== "" &&
-      (!Number.isFinite(amount) || amount <= 0)
+      (amount === undefined || !Number.isFinite(amount) || amount <= 0)
     ) {
       toast.error("Enter a valid confirmed amount.");
       return;

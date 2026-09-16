@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { API_BASE } from "../lib/api";
+import { Link, useNavigate } from "react-router-dom";
+import { API_BASE, api, hasSession } from "../lib/api";
 import { cls } from "../lib/format";
-import { Icon } from "../components/ui";
+import {
+  TIER_MONTHLY_PRICE,
+  TIER_RANK,
+  type BillableTier,
+} from "../lib/pricing";
+import { Icon, toast } from "../components/ui";
 
 const IMG = {
   chilies:
@@ -22,19 +27,34 @@ const CATEGORIES = [
   "Prof. services",
 ];
 
+// Billable tiers, mirrored 1:1 from the subscription API contract.
+// Only "STARTER" | "PRO" | "ENTERPRISE" are valid values for
+// POST /api/dashboard/subscriptions/checkout|upgrade|downgrade —
+// "FREE" below is NOT a real subscription tier, it's just how we describe
+// the no-subscription state. Tier ordering, monthly prices and cap figures
+// all come from the shared pricing module so this page and the dashboard's
+// Settings → Plan tab always agree. See src/lib/pricing.ts.
 const PRICING_PLANS = [
   {
-    tier: "FREE",
+    tier: "FREE" as const,
     name: "Free",
     description: "A real checkout and a real store — no card and no fees to start.",
     price: 0,
     popular: false,
+    // Per the contract: a store with NO subscription (or a null cap) has
+    // NO limit on staff/locations/products/orders — those caps only start
+    // applying once a Subscription row exists. The one deliberate
+    // exception is templateCap, which falls back to the STARTER set (3)
+    // even pre-subscription, since template selection has to work at
+    // onboarding, before billing is wired up. This copy reflects that
+    // actual behavior rather than inventing FREE-tier caps that aren't
+    // enforced anywhere server-side.
     features: [
-      "1 staff member",
-      "1 business location",
-      "Up to 20 products",
-      "Up to 200 orders / month",
-      "2 storefront templates",
+      "Unlimited staff members",
+      "Unlimited business locations",
+      "Unlimited products",
+      "Unlimited orders",
+      "3 storefront templates",
       "Point of sale",
       "Public storefront",
       "Orders, customers & invoices",
@@ -43,10 +63,10 @@ const PRICING_PLANS = [
     ],
   },
   {
-    tier: "STARTER",
+    tier: "STARTER" as const,
     name: "Starter",
     description: "Everything you need to get your store up and running.",
-    price: 5000,
+    price: TIER_MONTHLY_PRICE.STARTER,
     popular: false,
     features: [
       "1 staff member",
@@ -63,10 +83,10 @@ const PRICING_PLANS = [
     ],
   },
   {
-    tier: "PRO",
+    tier: "PRO" as const,
     name: "Pro",
     description: "More capacity and powerful tools for growing businesses.",
-    price: 10000,
+    price: TIER_MONTHLY_PRICE.PRO,
     popular: true,
     features: [
       "Up to 10 staff members",
@@ -82,10 +102,10 @@ const PRICING_PLANS = [
     ],
   },
   {
-    tier: "ENTERPRISE",
+    tier: "ENTERPRISE" as const,
     name: "Enterprise",
     description: "Unlimited capacity and the full Brikoh toolkit for businesses operating at scale.",
-    price: null,
+    price: TIER_MONTHLY_PRICE.ENTERPRISE,
     popular: false,
     features: [
       "Unlimited staff members",
@@ -161,7 +181,145 @@ function HealthDot() {
   );
 }
 
+// Minimal shape we read off GET /api/dashboard/subscriptions/plan.
+// We only need `tier` + `active` to decide checkout vs. upgrade vs. downgrade.
+type CurrentPlan = {
+  tier: BillableTier;
+  active: boolean;
+};
+
 export default function Landing() {
+  const navigate = useNavigate();
+  const [subscribing, setSubscribing] = useState<BillableTier | null>(null);
+  const [currentPlan, setCurrentPlan] = useState<CurrentPlan | null>(null);
+  const [planLoaded, setPlanLoaded] = useState(false);
+
+  // If the visitor is already logged in, load their current plan so pricing
+  // clicks can route to the right endpoint (checkout/upgrade/downgrade)
+  // instead of always hitting checkout, which only works pre-subscription.
+  const loadPlan = async () => {
+    if (!hasSession()) {
+      setPlanLoaded(true);
+      return;
+    }
+    try {
+      const res: any = await api.get("/api/dashboard/subscriptions/plan");
+      setCurrentPlan({ tier: res.tier, active: !!res.active });
+    } catch {
+      // Not fatal — if this fails we just fall back to treating the
+      // visitor as unsubscribed, and checkout will tell us if that's wrong.
+    } finally {
+      setPlanLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    void loadPlan();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handles clicking "Start with Starter/Pro/Enterprise".
+  //
+  // - Logged out: we can't call any subscription endpoint without a bearer
+  //   token + a store, so we send the visitor to register and tag the
+  //   chosen tier onto the URL. Once onboarding is wired, read `?plan=`
+  //   there (or stash it in localStorage on the way in) and auto-fire
+  //   checkout the moment the store is created.
+  // - Logged in, no active subscription: straight to checkout.
+  // - Logged in, already on this tier: no-op, just tell them.
+  // - Logged in, picking a higher tier: upgrade (prorated, applies at
+  //   charge-success).
+  // - Logged in, picking a lower tier: downgrade — this is deferred to
+  //   currentPeriodEnd and never blocks, but the API returns warnings
+  //   (over-cap resources, features/templates lost) that we should show
+  //   before committing. We fetch the preview first and confirm.
+  const handleSubscribe = async (tier: BillableTier) => {
+    if (!hasSession()) {
+      try {
+        sessionStorage.setItem("brikoh.pendingPlan", tier);
+      } catch {
+        /* storage unavailable */
+      }
+      navigate(`/auth?mode=register&plan=${tier}`);
+      return;
+    }
+
+    if (currentPlan?.active && currentPlan.tier === tier) {
+      toast.info(`You're already on ${tier[0]}${tier.slice(1).toLowerCase()}.`);
+      return;
+    }
+
+    setSubscribing(tier);
+    try {
+      // No active subscription yet (or plan lookup failed/returned
+      // inactive) — first-time checkout.
+      if (!currentPlan?.active) {
+        const res = await api.post("/api/dashboard/subscriptions/checkout", { tier });
+        if (res?.authorizationUrl) {
+          window.location.href = res.authorizationUrl;
+          return;
+        }
+        toast.error("Couldn't start checkout — no payment link returned.");
+        return;
+      }
+
+      const movingUp = TIER_RANK[tier] > TIER_RANK[currentPlan.tier];
+
+      if (movingUp) {
+        const res = await api.post("/api/dashboard/subscriptions/upgrade", { tier });
+        if (res?.authorizationUrl) {
+          window.location.href = res.authorizationUrl;
+          return;
+        }
+        toast.error("Couldn't start the upgrade — no payment link returned.");
+        return;
+      }
+
+      // Downgrading: preview first (read-only, never schedules anything),
+      // surface any warnings, then confirm before actually scheduling it.
+      const preview = await api.get(
+        `/api/dashboard/subscriptions/downgrade/preview?tier=${tier}`
+      );
+      const effective = preview?.effectiveAt
+        ? new Date(preview.effectiveAt).toLocaleDateString()
+        : "your next billing date";
+      const warningLines: string[] = (preview?.warnings || []).map(
+        (w: any) => `• ${w.message}`
+      );
+      const confirmMsg = warningLines.length
+        ? `Moving to ${tier} takes effect on ${effective}. Heads up:\n\n${warningLines.join(
+            "\n"
+          )}\n\nContinue?`
+        : `Move to ${tier} on ${effective}?`;
+
+      if (!window.confirm(confirmMsg)) {
+        return;
+      }
+
+      await api.post("/api/dashboard/subscriptions/downgrade", { tier });
+      toast.success(`You'll move to ${tier} on ${effective}.`);
+      await loadPlan();
+    } catch (err: any) {
+      const code = err?.code || err?.error?.code;
+      if (code === "ALREADY_SUBSCRIBED") {
+        toast.info("You're already subscribed — manage your plan from Settings.");
+        navigate("/dashboard/settings/billing");
+      } else if (code === "PRICING_NOT_CONFIGURED") {
+        toast.error("This plan isn't open for self-serve checkout yet — contact sales.");
+      } else if (code === "UPGRADE_NOT_HIGHER" || code === "DOWNGRADE_NOT_LOWER") {
+        // Our currentPlan cache is stale relative to the server — refetch
+        // silently and let the person try again.
+        toast.error("Your plan changed elsewhere — refresh and try again.");
+      } else if (code === "PRORATION_ZERO") {
+        toast.info("No time left to prorate this cycle — this will apply at your next renewal.");
+      } else {
+        toast.error(err?.message || "Couldn't update your subscription.");
+      }
+    } finally {
+      setSubscribing(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-cream-50">
       {/* Nav */}
@@ -174,6 +332,7 @@ export default function Landing() {
             <span className="font-display text-xl font-extrabold tracking-tight">brikoh</span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm font-bold text-ink-500 md:flex">
+            <a href="#pricing" className="hover:text-ink-900">Pricing</a>
             <a href="#inside" className="hover:text-ink-900">What's inside</a>
             <a href="#how" className="hover:text-ink-900">How it works</a>
           </nav>
@@ -391,124 +550,164 @@ export default function Landing() {
           </div>
 
           <div className="mt-12 grid gap-3 lg:grid-cols-4">
-            {PRICING_PLANS.map((plan) => (
-              <div
-                key={plan.tier}
-                className={cls(
-                  "relative flex flex-col rounded-3xl border bg-white p-6 transition-all hover:-translate-y-1 hover:shadow-lg sm:p-7",
-                  plan.popular
-                    ? "border-brand-400 shadow-[0_8px_30px_rgba(217,83,42,.12)]"
-                    : "border-cream-200"
-                )}
-              >
-                {plan.popular && (
-                  <span className="absolute right-5 top-5 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
-                    Most popular
-                  </span>
-                )}
+            {PRICING_PLANS.map((plan) => {
+              const isCurrent =
+                plan.tier !== "FREE" &&
+                currentPlan?.active &&
+                currentPlan.tier === plan.tier;
+              const isFreeAndCurrent =
+                plan.tier === "FREE" && hasSession() && planLoaded && !currentPlan?.active;
 
-                <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-600">
-                  {plan.name}
-                </p>
-
-                <h3 className="mt-2 font-display text-2xl font-extrabold tracking-tight text-ink-900">
-                  {plan.name}
-                </h3>
-
-                <p className="mt-2 min-h-[48px] text-sm leading-relaxed text-ink-500">
-                  {plan.description}
-                </p>
-
-                {/* Price */}
-                <div className="mt-6 border-y border-cream-100 py-5">
-                  {plan.price !== null ? (
-                    <>
-                      <div className="flex items-end gap-1">
-                        {plan.price > 0 ? (
-                          <>
-                            <span className="text-sm font-bold text-ink-500">₦</span>
-                            <span className="font-display text-4xl font-extrabold tracking-tight text-ink-900">
-                              {plan.price.toLocaleString()}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="font-display text-4xl font-extrabold tracking-tight text-ink-900">
-                            Free
-                          </span>
-                        )}
-                        <span className="mb-1 text-sm font-semibold text-ink-400">
-                          / month
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-xs font-semibold text-ink-400">
-                        {plan.price > 0
-                          ? "Cancel or upgrade anytime"
-                          : "No card needed. No fees."}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="font-display text-3xl font-extrabold tracking-tight text-ink-900">
-                        Let&apos;s talk
-                      </p>
-
-                      <p className="mt-1 text-xs font-semibold text-ink-400">
-                        Pricing tailored to your business
-                      </p>
-                    </>
+              return (
+                <div
+                  key={plan.tier}
+                  className={cls(
+                    "relative flex flex-col rounded-3xl border bg-white p-6 transition-all hover:-translate-y-1 hover:shadow-lg sm:p-7",
+                    plan.popular
+                      ? "border-brand-400 shadow-[0_8px_30px_rgba(217,83,42,.12)]"
+                      : "border-cream-200"
                   )}
-                </div>
+                >
+                  {plan.popular && !isCurrent && (
+                    <span className="absolute right-5 top-5 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
+                      Most popular
+                    </span>
+                  )}
+                  {(isCurrent || isFreeAndCurrent) && (
+                    <span className="absolute right-5 top-5 rounded-full bg-leaf-100 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-leaf-700">
+                      Current plan
+                    </span>
+                  )}
 
-                {/* Features */}
-                <div className="mt-6">
-                  <p className="text-xs font-extrabold uppercase tracking-wider text-ink-400">
-                    What&apos;s included
+                  <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-brand-600">
+                    {plan.name}
                   </p>
 
-                  <ul className="mt-4 space-y-3">
-                    {plan.features.map((feature) => (
-                      <li
-                        key={feature}
-                        className="flex items-start gap-2.5 text-sm font-semibold text-ink-700"
+                  <h3 className="mt-2 font-display text-2xl font-extrabold tracking-tight text-ink-900">
+                    {plan.name}
+                  </h3>
+
+                  <p className="mt-2 min-h-[48px] text-sm leading-relaxed text-ink-500">
+                    {plan.description}
+                  </p>
+
+                  {/* Price */}
+                  <div className="mt-6 border-y border-cream-100 py-5">
+                    {plan.price !== null ? (
+                      <>
+                        <div className="flex items-end gap-1">
+                          {plan.price > 0 ? (
+                            <>
+                              <span className="text-sm font-bold text-ink-500">₦</span>
+                              <span className="font-display text-4xl font-extrabold tracking-tight text-ink-900">
+                                {plan.price.toLocaleString()}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="font-display text-4xl font-extrabold tracking-tight text-ink-900">
+                              Free
+                            </span>
+                          )}
+                          <span className="mb-1 text-sm font-semibold text-ink-400">
+                            / month
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-xs font-semibold text-ink-400">
+                          {plan.price > 0
+                            ? "Cancel or upgrade anytime"
+                            : "No card needed. No fees."}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-display text-3xl font-extrabold tracking-tight text-ink-900">
+                          Let&apos;s talk
+                        </p>
+
+                        <p className="mt-1 text-xs font-semibold text-ink-400">
+                          Pricing tailored to your business
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Features */}
+                  <div className="mt-6">
+                    <p className="text-xs font-extrabold uppercase tracking-wider text-ink-400">
+                      What&apos;s included
+                    </p>
+
+                    <ul className="mt-4 space-y-3">
+                      {plan.features.map((feature) => (
+                        <li
+                          key={feature}
+                          className="flex items-start gap-2.5 text-sm font-semibold text-ink-700"
+                        >
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-leaf-100 text-leaf-700">
+                            <Icon name="check" size={12} />
+                          </span>
+
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* CTA */}
+                  <div className="mt-auto pt-8">
+                    {isCurrent ? (
+                      <span className="flex w-full items-center justify-center gap-2 rounded-xl border border-cream-200 bg-cream-50 px-5 py-3.5 text-sm font-extrabold text-ink-400">
+                        Your current plan
+                      </span>
+                    ) : plan.tier === "ENTERPRISE" ? (
+                      <a
+                        href="mailto:sales@brikoh.com?subject=Brikoh%20Enterprise%20Plan"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-cream-300 bg-white px-5 py-3.5 text-sm font-extrabold text-ink-800 transition-all hover:border-brand-300 hover:text-brand-600"
                       >
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-leaf-100 text-leaf-700">
-                          <Icon name="check" size={12} />
+                        Talk to sales
+                        <Icon name="arrowRight" size={16} />
+                      </a>
+                    ) : plan.tier === "FREE" ? (
+                      isFreeAndCurrent ? (
+                        <span className="flex w-full items-center justify-center gap-2 rounded-xl border border-cream-200 bg-cream-50 px-5 py-3.5 text-sm font-extrabold text-ink-400">
+                          Your current plan
                         </span>
-
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
+                      ) : (
+                        <Link
+                          to="/auth?mode=register"
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-cream-300 bg-white px-5 py-3.5 text-sm font-extrabold text-ink-800 transition-all hover:border-brand-300 hover:text-brand-600"
+                        >
+                          Start with {plan.name}
+                          <Icon name="arrowRight" size={16} />
+                        </Link>
+                      )
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSubscribe(plan.tier)}
+                        disabled={subscribing === plan.tier || !planLoaded}
+                        className={cls(
+                          "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-extrabold transition-all disabled:opacity-60",
+                          plan.popular
+                            ? "bg-brand-500 text-white shadow-[0_4px_14px_rgba(217,83,42,.25)] hover:bg-brand-600"
+                            : "border border-cream-300 bg-white text-ink-800 hover:border-brand-300 hover:text-brand-600"
+                        )}
+                      >
+                        {subscribing === plan.tier
+                          ? "Redirecting…"
+                          : currentPlan?.active
+                          ? TIER_RANK[plan.tier] > TIER_RANK[currentPlan.tier]
+                            ? `Upgrade to ${plan.name}`
+                            : `Switch to ${plan.name}`
+                          : `Start with ${plan.name}`}
+                        {subscribing !== plan.tier && <Icon name="arrowRight" size={16} />}
+                      </button>
+                    )}
+                  </div>
                 </div>
-
-                {/* CTA */}
-                <div className="mt-auto pt-8">
-                  {plan.tier === "ENTERPRISE" ? (
-                    <a
-                      href="mailto:sales@brikoh.com?subject=Brikoh%20Enterprise%20Plan"
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-cream-300 bg-white px-5 py-3.5 text-sm font-extrabold text-ink-800 transition-all hover:border-brand-300 hover:text-brand-600"
-                    >
-                      Talk to sales
-                      <Icon name="arrowRight" size={16} />
-                    </a>
-                  ) : (
-                    <Link
-                      to="/auth?mode=register"
-                      className={cls(
-                        "flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-extrabold transition-all",
-                        plan.popular
-                          ? "bg-brand-500 text-white shadow-[0_4px_14px_rgba(217,83,42,.25)] hover:bg-brand-600"
-                          : "border border-cream-300 bg-white text-ink-800 hover:border-brand-300 hover:text-brand-600"
-                      )}
-                    >
-                      Start with {plan.name}
-                      <Icon name="arrowRight" size={16} />
-                    </Link>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="mx-auto mt-8 max-w-3xl rounded-2xl border border-cream-200 bg-white p-5">

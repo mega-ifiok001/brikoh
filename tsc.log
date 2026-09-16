@@ -1,0 +1,26 @@
+src/components/Layout.tsx(52,62): error TS2322: Type '"analytics"' is not assignable to type 'Feature'.
+src/pages/Orders.tsx(181,36): error TS18048: 'amount' is possibly 'undefined'.
+src/pages/Products.tsx(1634,15): error TS6133: 'index' is declared but its value is never read.
+src/pages/SettingsPage.tsx(4,14): error TS6133: 'rawNum' is declared but its value is never read.
+src/pages/SettingsPage.tsx(918,11): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+  No index signature with a parameter of type 'string' was found on type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+src/pages/SettingsPage.tsx(918,31): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+  No index signature with a parameter of type 'string' was found on type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+src/pages/SettingsPage.tsx(923,11): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+  No index signature with a parameter of type 'string' was found on type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+src/pages/SettingsPage.tsx(923,31): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+  No index signature with a parameter of type 'string' was found on type '{ STARTER: number; PRO: number; ENTERPRISE: number; }'.
+src/pages/SettingsPage.tsx(975,13): error TS2448: Block-scoped variable 'loadPayments' used before its declaration.
+src/pages/SettingsPage.tsx(975,13): error TS2454: Variable 'loadPayments' is used before being assigned.
+src/pages/SettingsPage.tsx(1196,21): error TS7006: Parameter 'cap' implicitly has an 'any' type.
+src/pages/SettingsPage.tsx(1197,16): error TS7006: Parameter 'u' implicitly has an 'any' type.
+src/pages/SettingsPage.tsx(1197,19): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/pages/SettingsPage.tsx(1198,20): error TS7006: Parameter 'u' implicitly has an 'any' type.
+src/pages/SettingsPage.tsx(1198,23): error TS7006: Parameter 'c' implicitly has an 'any' type.
+src/pages/SettingsPage.tsx(1254,60): error TS2345: Argument of type 'string' is not assignable to parameter of type 'SetStateAction<"cancel" | "subscribe" | "upgrade" | "downgrade" | "history">'.
+src/pages/SettingsPage.tsx(1300,221): error TS7006: Parameter 'w' implicitly has an 'any' type.
+src/pages/SettingsPage.tsx(1300,224): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/pages/SettingsPage.tsx(1313,41): error TS2322: Type '{ children: string; variant: "outline"; danger: true; onClick: () => void; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant | undefined; size?: "sm" | ... 2 more ... | undefined; loading?: boolean | undefined; icon?: string | undefined; }'.
+  Property 'danger' does not exist on type 'IntrinsicAttributes & ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant | undefined; size?: "sm" | ... 2 more ... | undefined; loading?: boolean | undefined; icon?: string | undefined; }'.
+src/pages/SettingsPage.tsx(1315,379): error TS2322: Type '{ children: string; danger: true; loading: boolean; onClick: () => Promise<void>; }' is not assignable to type 'IntrinsicAttributes & ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant | undefined; size?: "sm" | ... 2 more ... | undefined; loading?: boolean | undefined; icon?: string | undefined; }'.
+  Property 'danger' does not exist on type 'IntrinsicAttributes & ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant | undefined; size?: "sm" | ... 2 more ... | undefined; loading?: boolean | undefined; icon?: string | undefined; }'.

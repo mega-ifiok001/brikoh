@@ -116,7 +116,12 @@ export default function Branches() {
         setDetail((d: any) => (d ? { ...d, ...payload } : d));
       }
     } catch (e: any) {
-      setFormErr(e?.message || "Couldn't save the branch.");
+      setFormErr(
+        e?.code === "LOCATION_LIMIT_REACHED"
+          ? "You have reached your plan's location limit. Upgrade to add more."
+          : e?.message ||
+            "Couldn't save the branch."
+      );
     } finally {
       setFormBusy(false);
     }

@@ -71,6 +71,34 @@ function ErrorBanner({ msg }: { msg: string }) {
   );
 }
 
+/* ------------------------------- Password input w/ visibility toggle ------------------------------ */
+// Thin wrapper around <Input> that adds a show/hide eye button. Keeps every
+// password-type field in this file consistent without duplicating the
+// toggle logic three times.
+type PasswordInputProps = Omit<React.ComponentProps<typeof Input>, "type">;
+
+function PasswordInput({ className, ...rest }: PasswordInputProps) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Input
+        type={show ? "text" : "password"}
+        className={`pr-10 ${className || ""}`}
+        {...rest}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        tabIndex={-1}
+        aria-label={show ? "Hide password" : "Show password"}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-ink-600"
+      >
+        <Icon name={show ? "eye-off" : "eye"} size={18} />
+      </button>
+    </div>
+  );
+}
+
 /* ------------------------------- Login / Register ------------------------------ */
 
 export function AuthPage() {
@@ -89,9 +117,10 @@ export function AuthPage() {
   const [confirm, setConfirm] = useState("");
 
   const afterAuth = (me: any) => {
-    if (!me?.account?.emailVerifiedAt) navigate("/verify");
-    else if (!me?.store?.id) navigate("/onboarding");
-    else navigate("/dashboard");
+    const pendingPlan = sessionStorage.getItem("brikoh.pendingPlan");
+    if (!me?.account?.emailVerifiedAt) navigate(pendingPlan ? `/verify?plan=${pendingPlan}` : "/verify");
+    else if (!me?.store?.id) navigate(pendingPlan ? `/onboarding?plan=${pendingPlan}` : "/onboarding");
+    else navigate(pendingPlan ? "/dashboard/settings/billing" : "/dashboard");
   };
 
   const submit = async (e: FormEvent) => {
@@ -115,7 +144,13 @@ export function AuthPage() {
       } else {
         const me = await register({ email, password, confirmPassword: confirm, firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() });
         toast.success("Account created — check your inbox.");
-        navigate(`/verify?email=${encodeURIComponent(email)}`);
+        const pendingPlan =
+          params.get("plan") || sessionStorage.getItem("brikoh.pendingPlan");
+        navigate(
+          pendingPlan
+            ? `/verify?email=${encodeURIComponent(email)}&plan=${pendingPlan}`
+            : `/verify?email=${encodeURIComponent(email)}`
+        );
         void me;
       }
     } catch (err: any) {
@@ -178,8 +213,7 @@ export function AuthPage() {
           </Field>
         )}
         <Field label="Password">
-          <Input
-            type="password"
+          <PasswordInput
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder={mode === "register" ? "At least 8 characters" : "Your password"}
@@ -189,7 +223,7 @@ export function AuthPage() {
         </Field>
         {mode === "register" && (
           <Field label="Confirm password">
-            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Same password again" autoComplete="new-password" required />
+            <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Same password again" autoComplete="new-password" required />
           </Field>
         )}
         <Button type="submit" size="lg" loading={busy} className="w-full">
@@ -237,8 +271,20 @@ export function VerifyPage() {
       const me2 = await verifyEmail(t.trim());
       setDone(true);
       toast.success("Email verified.");
+      const pendingPlan =
+        params.get("plan") || sessionStorage.getItem("brikoh.pendingPlan");
       setTimeout(
-        () => navigate(me2?.store?.id ? "/dashboard" : "/onboarding", { replace: true }),
+        () =>
+          navigate(
+            me2?.store?.id
+              ? pendingPlan
+                ? "/dashboard/settings/billing"
+                : "/dashboard"
+              : pendingPlan
+                ? `/onboarding?plan=${pendingPlan}`
+                : "/onboarding",
+            { replace: true }
+          ),
         700
       );
     } catch (e: any) {
@@ -406,10 +452,10 @@ export function AcceptInvitePage() {
           </Field>
         </div>
         <Field label="Choose a password">
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" autoComplete="new-password" required />
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" autoComplete="new-password" required />
         </Field>
         <Field label="Confirm password">
-          <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Same password again" autoComplete="new-password" required />
+          <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Same password again" autoComplete="new-password" required />
         </Field>
         <Button type="submit" size="lg" loading={busy} className="w-full">
           Accept invite &amp; sign in

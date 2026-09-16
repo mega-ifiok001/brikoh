@@ -28,6 +28,7 @@ export type Feature =
   | "wallet"
   | "expenses"
   | "reports"
+  | "analytics"
   | "staff"
   | "settings"
   | "tickets";
@@ -46,6 +47,7 @@ export const ALL_FEATURES: Feature[] = [
   "wallet",
   "expenses",
   "reports",
+  "analytics",
   "staff",
   "settings",
   "tickets",
@@ -89,6 +91,7 @@ const RESTRICTED_FEATURES: Record<"MANAGER" | "STAFF", readonly Feature[]> = {
  */
 const REQUIRED_PERMISSION: Partial<Record<Feature, string>> = {
   reports: "viewProfit",
+  analytics: "viewProfit",
   expenses: "manageExpenses",
   discounts: "manageDiscounts",
   purchases: "managePurchases",

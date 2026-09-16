@@ -3,14 +3,23 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { fd, titleCase } from "../lib/format";
 import {
+  TIER_LABEL,
+  isHigherTier,
+  isLowerTier,
+  tierMonthlyPrice,
+} from "../lib/pricing";
+import {
   Badge,
   Button,
   Confirm,
   Field,
   Icon,
   Input,
+  Modal,
+  Money,
   PageHead,
   Select,
+  StatusBadge,
   Tabs,
   Toggle,
   toast,
@@ -42,9 +51,9 @@ const ACCENT_SWATCH = [
   "#dc2626",
 ] as const;
 
-export default function SettingsPage() {
+export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const { refresh } = useAuth();
-  const [tab, setTab] = useState("business");
+  const [tab, setTab] = useState(initialTab === "plan" ? "plan" : "business");
 
   return (
     <div>
@@ -500,7 +509,6 @@ function BankAccountsTab() {
   try {
     const res: any = await api.get("/api/dashboard/settings/bank-accounts");
 
-    console.log("BANK ACCOUNTS API RESPONSE:", res);
 
     setAccounts(Array.isArray(res) ? res : res.bankAccounts || []);
   } catch (e: any) {
@@ -901,13 +909,73 @@ function AccountTab() {
 
 /* ----------------------------------- Plan ------------------------------------- */
 
+/*
+ * Tier copy for the self-serve billing UI. Prices, the tier ordering that
+ * decides upgrade-vs-downgrade, and the cap figures all come from the shared
+ * pricing module so this tab and the marketing landing page can never
+ * disagree. See src/lib/pricing.ts for the canonical values.
+ */
+const TIERS = [
+  {
+    id: "STARTER",
+    label: TIER_LABEL.STARTER,
+    hint: "1 staff · 1 location · 100 products · 1,000 orders",
+  },
+  {
+    id: "PRO",
+    label: TIER_LABEL.PRO,
+    hint: "10 staff · 3 locations · 500 products · 5,000 orders · custom domain",
+  },
+  {
+    id: "ENTERPRISE",
+    label: TIER_LABEL.ENTERPRISE,
+    hint: "Unlimited everything · advanced analytics · marketing tools",
+  },
+] as const;
+
 function PlanTab() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Domain
   const [domain, setDomain] = useState("");
   const [domainBusy, setDomainBusy] = useState(false);
+
+  // Billing actions
+  const [actionTab, setActionTab] = useState<"subscribe" | "upgrade" | "downgrade" | "cancel" | "history">("history");
+  const initialCheckoutTier = (() => {
+    try {
+      const p = sessionStorage.getItem("brikoh.pendingPlan");
+      if (p === "STARTER" || p === "PRO" || p === "ENTERPRISE") return p;
+    } catch {
+      /* storage unavailable */
+    }
+    return "PRO";
+  })();
+  const [checkoutTier, setCheckoutTier] = useState(initialCheckoutTier);
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem("brikoh.pendingPlan");
+    } catch {
+      /* storage unavailable */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [upgradeTier, setUpgradeTier] = useState("ENTERPRISE");
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
+  const [downgradeTier, setDowngradeTier] = useState("STARTER");
+  const [downgradeBusy, setDowngradeBusy] = useState(false);
+  const [downgradePreview, setDowngradePreview] = useState<any>(null);
+  const [downgradePreviewBusy, setDowngradePreviewBusy] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+
+  // Payments
+  const [payments, setPayments] = useState<any[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [selectedPayment, setSelectedPayment] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -928,9 +996,33 @@ function PlanTab() {
     }
   }, []);
 
+  const loadPayments = useCallback(async () => {
+    setPaymentsLoading(true);
+    try {
+      const res: any = await api.get("/api/dashboard/subscriptions/payments");
+      setPayments(
+        (Array.isArray(res.items) ? res.items
+          : Array.isArray(res) ? res
+          : []) as any[]
+      );
+    } catch {
+      setPayments([]);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  }, []);
+
+  // Refresh after billing actions
+  const afterAction = () => {
+    load();
+    loadPayments();
+  };
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadPayments();
+    if (initialCheckoutTier !== "PRO") setActionTab("subscribe");
+  }, [load, loadPayments]);
 
   const saveDomain = async () => {
     const value = domain.trim().toLowerCase() || null;
@@ -956,6 +1048,139 @@ function PlanTab() {
     }
   };
 
+  /* --------------------------- Checkout --------------------------- */
+
+  const doCheckout = async () => {
+    setCheckoutBusy(true);
+    try {
+      const res: any = await api.post("/api/dashboard/subscriptions/checkout", {
+        tier: checkoutTier,
+      });
+      if (res.authorizationUrl) {
+        window.location.assign(res.authorizationUrl);
+      } else {
+        toast.success(`Subscription initiated for ${checkoutTier}.`);
+        afterAction();
+      }
+    } catch (e: any) {
+      const msg =
+        e?.code === "ALREADY_SUBSCRIBED"
+          ? "You already have an active subscription."
+          : e?.code === "PRICING_NOT_CONFIGURED"
+            ? "This tier isn't available for checkout yet."
+            : e?.message || "Couldn't start checkout.";
+      toast.error(msg);
+    } finally {
+      setCheckoutBusy(false);
+    }
+  };
+
+  /* --------------------------- Upgrade --------------------------- */
+
+  const doUpgrade = async () => {
+    setUpgradeBusy(true);
+    try {
+      const res: any = await api.post("/api/dashboard/subscriptions/upgrade", {
+        tier: upgradeTier,
+      });
+      if (res.authorizationUrl) {
+        window.location.assign(res.authorizationUrl);
+      } else {
+        toast.success(`Upgrade to ${upgradeTier} initiated.`);
+        afterAction();
+      }
+    } catch (e: any) {
+      const msg =
+        e?.code === "UPGRADE_NOT_HIGHER"
+          ? "That tier isn't higher than your current plan."
+          : e?.code === "PRICING_NOT_CONFIGURED"
+            ? "This tier isn't configured for upgrades yet."
+            : e?.code === "PRORATION_ZERO"
+              ? "No time left in your billing cycle."
+              : e?.message || "Couldn't start upgrade.";
+      toast.error(msg);
+    } finally {
+      setUpgradeBusy(false);
+    }
+  };
+
+  /* --------------------------- Downgrade preview + action --------------------------- */
+
+  const loadDowngradePreview = async (tier: string) => {
+    setDowngradePreviewBusy(true);
+    try {
+      const res: any = await api.get(`/api/dashboard/subscriptions/downgrade/preview?tier=${encodeURIComponent(tier)}`);
+      setDowngradePreview(res);
+    } catch {
+      setDowngradePreview(null);
+    } finally {
+      setDowngradePreviewBusy(false);
+    }
+  };
+
+  const doDowngrade = async () => {
+    setDowngradeBusy(true);
+    try {
+      await api.post("/api/dashboard/subscriptions/downgrade", {
+        tier: downgradeTier,
+      });
+      toast.success(`Downgrade to ${downgradeTier} scheduled.`);
+      afterAction();
+    } catch (e: any) {
+      const msg =
+        e?.code === "DOWNGRADE_NOT_LOWER"
+          ? "That tier isn't lower than your current plan."
+          : e?.code === "PRICING_NOT_CONFIGURED"
+            ? "This tier isn't configured for downgrades yet."
+            : e?.message || "Couldn't schedule downgrade.";
+      toast.error(msg);
+    } finally {
+      setDowngradeBusy(false);
+    }
+  };
+
+  /* --------------------------- Cancel --------------------------- */
+
+  const doCancel = async () => {
+    setCancelBusy(true);
+    try {
+      await api.post("/api/dashboard/subscriptions/cancel");
+      toast.success("Subscription cancelled.");
+      setCancelConfirm(false);
+      afterAction();
+    } catch (e: any) {
+      const msg =
+        e?.code === "NO_SUBSCRIPTION"
+          ? "You don't have an active subscription to cancel."
+          : e?.code === "NO_PAYSTACK_SUBSCRIPTION"
+            ? "No Paystack subscription found."
+            : e?.message || "Couldn't cancel subscription.";
+      toast.error(msg);
+    } finally {
+      setCancelBusy(false);
+    }
+  };
+
+  /* --------------------------- Payment detail --------------------------- */
+
+  const viewPayment = async (id: string) => {
+    try {
+      const res: any = await api.get(`/api/dashboard/subscriptions/payments/${id}`);
+      setSelectedPayment(res);
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't load payment details.");
+    }
+  };
+
+  /* --------------------------- Render --------------------------- */
+
+  // Load downgrade preview when tab changes
+  useEffect(() => {
+    if (actionTab === "downgrade") {
+      loadDowngradePreview(downgradeTier);
+    }
+  }, [actionTab, downgradeTier]);
+
   if (loading) {
     return (
       <div className="card max-w-2xl p-6">
@@ -975,17 +1200,21 @@ function PlanTab() {
     );
   }
 
+
+
+
+
   const plan = data?.plan;
   const usage = data?.usage || {};
   const limits = plan?.limits || {};
   const flags = plan?.featureFlags || {};
   const period = data?.period;
+  const currentTier = plan?.tier || "STARTER";
+  const subscriptionStatus = plan?.status || "ACTIVE";
+  const isActive = plan?.active === true;
+  const pendingDowngrade = data?.pendingDowngrade;
 
-  const rows: {
-    label: string;
-    used: number;
-    cap: number | null | undefined;
-  }[] = [
+  const rows = [
     { label: "Staff", used: usage.staff ?? 0, cap: limits.staffCap },
     { label: "Locations", used: usage.locations ?? 0, cap: limits.locationCap },
     { label: "Products", used: usage.products ?? 0, cap: limits.productCap },
@@ -994,164 +1223,172 @@ function PlanTab() {
 
   const capLabel = (cap: number | null | undefined) =>
     cap == null ? "Unlimited" : String(cap);
+  const pct = (u: number, c: number | null | undefined) => { if (c == null || c <= 0) return 0; return Math.min(100, Math.round((u/c)*100)); };
+  const barTone = (u: number, c: number | null | undefined) => { if (c == null) return "bg-leaf-500"; const p=u/c; if(p>=1) return "bg-danger-500"; if(p>=0.85) return "bg-amber-500"; return "bg-leaf-500"; };
 
-  const pct = (used: number, cap: number | null | undefined) => {
-    if (cap == null || cap <= 0) return 0;
-    return Math.min(100, Math.round((used / cap) * 100));
-  };
-
-  const barTone = (used: number, cap: number | null | undefined) => {
-    if (cap == null) return "bg-leaf-500";
-    const p = used / cap;
-    if (p >= 1) return "bg-danger-500";
-    if (p >= 0.8) return "bg-gold-500";
-    return "bg-leaf-500";
-  };
+  const availableTiers = TIERS.map(t => t.id);
+  const higherTiers = availableTiers.filter(t => isHigherTier(currentTier, t));
+  const lowerTiers = availableTiers.filter(t => isLowerTier(currentTier, t));
 
   if (!plan) {
     return (
-      <div className="card anim-rise max-w-2xl p-6">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gold-100 text-gold-600">
-            <Icon name="zap" size={20} />
-          </span>
-          <div>
-            <p className="font-display text-lg font-extrabold">
-              No active plan
-            </p>
-            <p className="text-sm text-ink-400">
-              You’re running without subscription limits. Billing kicks in when
-              you’re ready to grow.
-            </p>
-          </div>
-        </div>
-      </div>
+      <div className="card anim-rise max-w-2xl p-6"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gold-100 text-gold-600"><Icon name="zap" size={20} /></span><div><p className="font-display text-lg font-extrabold">No active plan</p><p className="text-sm text-ink-400">You are running without subscription limits.</p></div></div></div>
     );
   }
 
   return (
     <div className="max-w-2xl space-y-5">
-      {/* Plan header */}
+      {pendingDowngrade && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><div className="flex items-start gap-3"><Icon name="alert" size={20} className="mt-0.5 text-amber-600" /><div className="min-w-0"><p className="text-sm font-bold text-amber-800">Downgrade scheduled to {pendingDowngrade.tier}</p><p className="mt-0.5 text-xs text-amber-700">Features switch on {new Date(pendingDowngrade.effectiveAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.</p></div></div></div>
+      )}
+
       <div className="card anim-rise p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="font-display text-lg font-extrabold">
-              {titleCase(plan.tier || "Starter")} plan
-            </p>
-            {period?.start && period?.end && (
-              <p className="text-sm text-ink-400">
-                Period {fd(period.start)} → {fd(period.end)}
-              </p>
-            )}
-          </div>
-          <Badge
-            tone={
-              plan.status === "ACTIVE"
-                ? "green"
-                : plan.status === "TRIALING"
-                ? "brand"
-                : plan.status === "PAST_DUE"
-                ? "danger"
-                : "neutral"
-            }
-          >
-            {titleCase(plan.status || "—")}
-          </Badge>
+          <div><p className="font-display text-lg font-extrabold">{titleCase(plan.tier || "Starter")} plan</p>{period?.start && period?.end && <p className="text-sm text-ink-400">Period {fd(period.start)} to {fd(period.end)}</p>}</div>
+          <Badge tone={subscriptionStatus==="ACTIVE"?"green":subscriptionStatus==="TRIALING"?"brand":subscriptionStatus==="PAST_DUE"?"danger":"neutral"}>{titleCase(subscriptionStatus || "—")}</Badge>
         </div>
-
-        {/* Feature flags */}
         <div className="mt-4 flex flex-wrap gap-2">
-          <Badge tone={flags.customDomain ? "green" : "neutral"}>
-            Custom domain {flags.customDomain ? "✓" : "—"}
-          </Badge>
-          <Badge tone={flags.advancedAnalytics ? "green" : "neutral"}>
-            Advanced analytics {flags.advancedAnalytics ? "✓" : "—"}
-          </Badge>
-          <Badge tone={flags.marketingTools ? "green" : "neutral"}>
-            Marketing tools {flags.marketingTools ? "✓" : "—"}
-          </Badge>
-          <Badge tone="neutral">
-            Templates: {capLabel(limits.templateCap)}
-          </Badge>
+          <Badge tone={flags.customDomain?"green":"neutral"}>Custom domain {flags.customDomain?"✓":"—"}</Badge>
+          <Badge tone={flags.advancedAnalytics?"green":"neutral"}>Advanced analytics {flags.advancedAnalytics?"✓":"—"}</Badge>
+          <Badge tone={flags.marketingTools?"green":"neutral"}>Marketing tools {flags.marketingTools?"✓":"—"}</Badge>
+          <Badge tone="neutral">Templates: {capLabel(limits.templateCap)}</Badge>
         </div>
       </div>
 
-      {/* Usage bars */}
       <div className="card anim-rise p-6">
         <h3 className="font-display text-base font-extrabold">Usage</h3>
-        <p className="text-xs text-ink-400">
-          Live counts against your plan caps. Hitting a cap blocks new creates
-          until you upgrade.
-        </p>
+        <p className="text-xs text-ink-400">Live counts against your plan caps. Hitting a cap blocks new creates.</p>
         <div className="mt-4 space-y-4">
-          {rows.map((r) => (
-            <div key={r.label}>
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="font-bold text-ink-700">{r.label}</span>
-                <span className="tabular-nums text-ink-500">
-                  <strong className="text-ink-800">{r.used}</strong>
-                  {" / "}
-                  {capLabel(r.cap)}
-                </span>
-              </div>
-              <div className="h-2.5 overflow-hidden rounded-full bg-cream-100">
-                <div
-                  className={`h-full rounded-full transition-all ${barTone(
-                    r.used,
-                    r.cap
-                  )}`}
-                  style={{
-                    width:
-                      r.cap == null
-                        ? "8%"
-                        : `${Math.max(4, pct(r.used, r.cap))}%`,
-                  }}
-                />
-              </div>
-            </div>
+          {rows.map(r => (
+            <div key={r.label}><div className="mb-1 flex items-center justify-between text-sm"><span className="font-bold text-ink-700">{r.label}</span><span className="tabular-nums text-ink-500"><strong className="text-ink-800">{r.used}</strong> {" / "} {capLabel(r.cap)}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-cream-100"><div className={"h-full rounded-full transition-all " + barTone(r.used, r.cap)} style={{ width: r.cap==null ? "8%" : `${Math.max(4,pct(r.used,r.cap))}%` }} /></div></div>
           ))}
         </div>
       </div>
 
-      {/* Custom domain */}
+
       <div className="card anim-rise p-6">
-        <h3 className="font-display text-base font-extrabold">
-          Custom domain
-        </h3>
-        {!flags.customDomain ? (
-          <p className="mt-2 text-sm text-ink-500">
-            Custom domains are available on{" "}
-            <strong>Pro</strong> and <strong>Enterprise</strong>. Upgrade to
-            point your own domain at the storefront.
-          </p>
-        ) : (
-          <>
-            <p className="mt-1 text-xs text-ink-400">
-              Point a CNAME at your Brikoh storefront, then save the domain
-              here.
-            </p>
-            <div className="mt-4 flex flex-wrap items-end gap-3">
-              <div className="min-w-[220px] flex-1">
-                <Field label="Domain">
-                  <Input
-                    value={domain}
-                    onChange={(e) => setDomain(e.target.value)}
-                    placeholder="shop.yourbrand.com"
-                  />
-                </Field>
-              </div>
-              <Button loading={domainBusy} onClick={saveDomain} icon="check">
-                Save domain
-              </Button>
+        <div className="flex items-center gap-2"><Icon name="settings" size={18} className="text-ink-400" /><h3 className="font-display text-base font-extrabold">Subscription</h3></div>
+        <p className="mt-0.5 text-xs text-ink-400">Subscribe, upgrade, downgrade, or cancel.</p>
+        <div className="mt-4 flex gap-1 border-b border-cream-200">
+          {[
+            { id: "history", label: "History" },
+            ...((isActive || !!plan?.tier) ? [
+              { id: "upgrade", label: "Upgrade" },
+              { id: "downgrade", label: "Downgrade" },
+              { id: "cancel", label: "Cancel" },
+            ] : [
+              { id: "subscribe", label: "Subscribe" },
+            ]),
+          ].map(t => (
+            <button key={t.id} onClick={() => setActionTab(t.id as any)} className={"border-b-2 px-3.5 py-2 text-sm font-bold transition-colors -mb-px " + (actionTab===t.id ? "border-brand-500 text-brand-600" : "border-transparent text-ink-400 hover:text-ink-700")}>{t.label}</button>
+          ))}
+        </div>
+
+        {actionTab==="subscribe" && (
+          <div className="mt-5 space-y-4">
+            <p className="text-sm text-ink-500">Choose a plan. Redirected to Paystack.</p>
+            <div className="space-y-3">              {TIERS.map(t => (
+                <label key={t.id} className={"flex items-start gap-3 rounded-xl border-2 px-4 py-3.5 transition-colors " + (checkoutTier===t.id ? "border-brand-500 bg-brand-50" : "border-cream-200 hover:border-cream-300")}>
+                  <input type="radio" name="checkoutTier" value={t.id} checked={checkoutTier===t.id} onChange={e => setCheckoutTier(e.target.value)} className="mt-0.5" />
+                  <div className="min-w-0"><p className="font-bold">{t.label}</p><p className="text-xs text-ink-400">{t.hint}</p><p className="mt-1 text-sm font-extrabold tabular-nums">{tierMonthlyPrice(t.id) != null ? (<><Money v={tierMonthlyPrice(t.id)} currency="NGN" strong /> /mo</>) : (<span className="text-ink-500">Custom pricing</span>)}</p></div>
+                </label>
+              ))}
             </div>
-          </>
+            <Button loading={checkoutBusy} onClick={doCheckout} icon="key" className="w-full">Start checkout</Button>
+          </div>
+        )}
+
+        {actionTab==="upgrade" && (
+          <div className="mt-5 space-y-4">
+            <p className="text-sm text-ink-500">Upgrade to a higher tier. Prorated charge applies.</p>
+            {higherTiers.length===0 ? (<p className="rounded-xl bg-gold-50 px-4 py-3 text-sm font-semibold text-gold-700">Already on highest tier.</p>) : (
+              <><div className="space-y-3">
+                {higherTiers.map(t => (
+                  <label key={t} className={"flex items-start gap-3 rounded-xl border-2 px-4 py-3.5 transition-colors " + (upgradeTier===t ? "border-brand-500 bg-brand-50" : "border-cream-200 hover:border-cream-300")}>
+                    <input type="radio" name="upgradeTier" value={t} checked={upgradeTier===t} onChange={e => setUpgradeTier(e.target.value)} className="mt-0.5" />
+                    <div className="min-w-0"><p className="font-bold">{titleCase(t)}</p><p className="text-xs text-ink-400">{TIERS.find(x => x.id===t)?.hint}</p></div>
+                  </label>
+                ))}
+              </div>              <Button loading={upgradeBusy} onClick={doUpgrade} icon="zap" className="w-full">Upgrade now</Button></>
+            )}
+          </div>
+        )}
+
+        {actionTab==="downgrade" && (
+          <div className="mt-5 space-y-4">
+            <p className="text-sm text-ink-500">Downgrade deferred. Keeps current tier until period end.</p>
+            {lowerTiers.length===0 ? (<p className="rounded-xl bg-gold-50 px-4 py-3 text-sm font-semibold text-gold-700">Already on lowest tier.</p>) : (
+              <><div className="space-y-3">
+                {lowerTiers.map(t => (
+                  <label key={t} className={"flex items-start gap-3 rounded-xl border-2 px-4 py-3.5 transition-colors " + (downgradeTier===t ? "border-brand-500 bg-brand-50" : "border-cream-200 hover:border-cream-300")}>
+                    <input type="radio" name="downgradeTier" value={t} checked={downgradeTier===t} onChange={e => setDowngradeTier(e.target.value)} className="mt-0.5" />
+                    <div className="min-w-0"><p className="font-bold">{titleCase(t)}</p><p className="text-xs text-ink-400">{TIERS.find(x => x.id===t)?.hint}</p></div>
+                  </label>
+                ))}
+              </div>              {downgradePreview && downgradePreview.warnings?.length > 0 && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-bold text-amber-800">Changes at downgrade:</p><ul className="mt-2 space-y-1">{downgradePreview.warnings.map((w: any, i: number) => (<li key={i} className="text-sm text-amber-700">{w.message}</li>))}</ul></div>
+              )}
+              {downgradePreviewBusy && <div className="mt-3 flex items-center gap-2 text-sm text-ink-400"><div className="h-4 w-4 animate-spin rounded-full border-2 border-cream-200 border-t-brand-500" />Loading...</div>}
+              <Button loading={downgradeBusy} onClick={doDowngrade} icon="clock" className="w-full">Schedule downgrade</Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {actionTab==="cancel" && (
+          <div className="mt-5">
+            <p className="text-sm text-ink-500">Cancels Paystack recurring subscription.</p>
+            {!cancelConfirm ? (
+              <Button variant="danger" onClick={() => setCancelConfirm(true)} className="mt-3 w-full">Cancel subscription</Button>
+            ) : (
+              <div className="mt-3 rounded-xl border border-danger-200 bg-danger-50 p-4"><p className="text-sm font-bold text-danger-700">Are you sure? Cannot be undone.</p><p className="mt-1 text-xs text-danger-600">Reverts to Starter after period end.</p><div className="mt-4 flex gap-2"><Button variant="ghost" onClick={() => setCancelConfirm(false)}>Go back</Button><Button variant="danger" loading={cancelBusy} onClick={doCancel}>Yes cancel</Button></div></div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="card anim-rise p-6">
+        <h3 className="font-display text-base font-extrabold">Billing history</h3>
+        <p className="mt-0.5 text-xs text-ink-400">All subscription payments, upgrades, and renewals. Newest first.</p>
+        {paymentsLoading ? (
+          <div className="mt-4 space-y-3">{[1,2,3].map(i => <div key={i} className="h-12 skeleton rounded-xl" />)}</div>
+        ) : payments.length === 0 ? (
+          <p className="mt-4 rounded-xl bg-cream-50 px-4 py-6 text-center text-sm font-semibold text-ink-400">No billing activity yet.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto scrollbar-slim"><table className="tbl"><thead><tr><th>Reference</th><th>Tier</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th><th></th></tr></thead><tbody>
+            {payments.map(p => (
+              <tr key={p.id} className="cursor-pointer hover:bg-cream-50"><td><span className="font-mono text-xs font-bold">{p.reference || "—"}</span></td><td>{titleCase(p.tier)}</td><td><Badge tone="neutral">{titleCase(p.kind)}</Badge></td><td className="text-right tabular-nums"><Money v={p.amount} currency="NGN" /></td><td><StatusBadge status={p.status} /></td><td className="text-ink-400 text-xs">{fd(p.createdAt)}</td><td><Button variant="ghost" size="sm" icon="eye" onClick={() => viewPayment(p.id)} title="View details" /></td></tr>
+            ))}
+          </tbody></table></div>
         )}
       </div>
 
-      <p className="text-center text-xs text-ink-400">
-        Caps only block new creates — existing data is never deleted. Contact
-        support to upgrade.
-      </p>
+      <Modal open={!!selectedPayment} onClose={() => setSelectedPayment(null)} title="Payment details" wide>
+        {selectedPayment && (
+          <div className="space-y-4"><div className="grid grid-cols-2 gap-4">
+            <Field label="Reference"><Input value={selectedPayment.reference || ""} disabled /></Field>
+            <Field label="Tier"><Input value={titleCase(selectedPayment.tier)} disabled /></Field>
+            <Field label="Type"><Input value={titleCase(selectedPayment.kind)} disabled /></Field>
+            <Field label="Status"><Input value={titleCase(selectedPayment.status)} disabled /></Field>
+            <Field label="Amount"><Input value={selectedPayment.amount || "0.00"} disabled /></Field>
+            <Field label="Provider ref"><Input value={selectedPayment.providerRef || "—"} disabled /></Field>
+          </div><div className="grid grid-cols-2 gap-4">
+            <Field label="Created"><Input value={fd(selectedPayment.createdAt)} disabled /></Field>
+            <Field label="Paid at"><Input value={fd(selectedPayment.paidAt)} disabled /></Field>
+          </div>
+          {selectedPayment.orphanReason && (<div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-bold text-amber-800">Orphan (no local effect)</p><p className="mt-1 text-xs text-amber-700">{selectedPayment.orphanReason}</p></div>)}
+          </div>
+        )}
+      </Modal>
+
+      <div className="card anim-rise p-6">
+        <h3 className="font-display text-base font-extrabold">Custom domain</h3>
+        {!flags.customDomain ? (
+          <p className="mt-2 text-sm text-ink-500">Custom domains are available on <strong>Pro</strong> and <strong>Enterprise</strong>. Upgrade to point your own domain at the storefront.</p>
+        ) : (
+          <><p className="mt-1 text-xs text-ink-400">Point a CNAME at your Brikoh storefront, then save the domain here.</p><div className="mt-4 flex flex-wrap items-end gap-3"><div className="min-w-[220px] flex-1"><Field label="Domain"><Input value={domain} onChange={e => setDomain(e.target.value)} placeholder="shop.yourbrand.com" /></Field></div><Button loading={domainBusy} onClick={saveDomain} icon="check">Save domain</Button></div></>
+        )}
+      </div>
+
+      <p className="text-center text-xs text-ink-400">Caps only block new creates. Existing data is never deleted. Contact support to upgrade.</p>
     </div>
-  );
-}
+  );}
