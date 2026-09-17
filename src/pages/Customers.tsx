@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { asList, fd, fdt, pick, rawNum, titleCase } from "../lib/format";
@@ -529,7 +530,14 @@ export default function Customers() {
                       {recentOrders.slice(0, 10).map((o: any, i: number) => (
                         <tr key={o.id || i}>
                           <td className="font-bold">
-                            {o.orderNumber || o.number || o.id?.slice?.(0, 8) || "—"}
+                            <Link
+                              to={`/dashboard/orders?customerId=${encodeURIComponent(
+                                detail?.id || ""
+                              )}`}
+                              className="text-brand-600 hover:underline"
+                            >
+                              {o.orderNumber || o.number || o.id?.slice?.(0, 8) || "—"}
+                            </Link>
                           </td>
                           <td className="whitespace-nowrap text-ink-500">
                             {fdt(o.createdAt)}

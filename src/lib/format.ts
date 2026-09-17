@@ -120,6 +120,24 @@ export function toISODate(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * Turn an ApiError into a message worth showing a merchant.
+ *
+ * The backend's `code` is the real contract, so the caller can map the codes
+ * that matter for its screen. Rate limiting is handled everywhere because it
+ * is a platform-wide response, not a per-feature one.
+ */
+export function apiErrorMessage(
+  e: any,
+  fallback: string,
+  extra?: Record<string, string>
+): string {
+  const code = e?.code;
+  if (code === "RATE_LIMITED") return "Too many requests — please slow down and try again.";
+  if (extra && code && extra[code]) return extra[code];
+  return e?.message || fallback;
+}
+
 export function titleCase(s?: string | null): string {
   if (!s) return "—";
   return String(s)

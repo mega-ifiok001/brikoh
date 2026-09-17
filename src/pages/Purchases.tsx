@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
-import { asList, fd, pick, rawNum, titleCase } from "../lib/format";
+import { apiErrorMessage, asList, fd, pick, rawNum, titleCase } from "../lib/format";
 import {
   Badge,
   Button,
@@ -384,6 +384,9 @@ const STATUSES = [
   "CANCELLED",
 ] as const;
 
+const MAX_QTY = 1_000_000;
+const MAX_MONEY = 99999999.99;
+
 function POs({ currency }: { currency: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -391,10 +394,14 @@ function POs({ currency }: { currency: string }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusF, setStatusF] = useState<(typeof STATUSES)[number]>("ALL");
+  const [supplierF, setSupplierF] = useState("");
 
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+
+  // The draft currently being edited, if any (PUT replaces the whole order).
+  const [editing, setEditing] = useState<any | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
@@ -435,6 +442,7 @@ function POs({ currency }: { currency: string }) {
         const qs = new URLSearchParams();
         qs.set("limit", "24");
         if (statusF !== "ALL") qs.set("status", statusF);
+        if (supplierF) qs.set("supplierId", supplierF);
         if (cursor) qs.set("cursor", cursor);
         const res = await api.get(
           `/api/dashboard/purchase-orders?${qs.toString()}`
@@ -451,7 +459,7 @@ function POs({ currency }: { currency: string }) {
         setLoadingMore(false);
       }
     },
-    [statusF]
+    [statusF, supplierF]
   );
 
   const loadCatalog = useCallback(async () => {
@@ -483,6 +491,7 @@ function POs({ currency }: { currency: string }) {
   }, [loadCatalog]);
 
   const openCreate = () => {
+    setEditing(null);
     setSupplierId(suppliers[0]?.id || "");
     setExpected("");
     setNotes("");
@@ -493,6 +502,67 @@ function POs({ currency }: { currency: string }) {
     setFormOpen(true);
   };
 
+  /**
+   * Only a DRAFT can be edited — an issued order is immutable, and the PUT
+   * replaces the whole order (header + lines) rather than patching it.
+   */
+  const openEdit = async (po: any) => {
+    setFormErr("");
+    try {
+      const res: any = await api.get(
+        `/api/dashboard/purchase-orders/${po.id}`
+      );
+      const d = res?.purchaseOrder ?? res;
+
+      if (!d || d.status !== "DRAFT") {
+        toast.error(
+          "Only draft orders can be edited. An issued order can be received, paid, or cancelled."
+        );
+        return;
+      }
+
+      const lines: any[] = Array.isArray(res?.lineItems) ? res.lineItems : [];
+
+      setEditing(d);
+      setSupplierId(d.supplier?.id || d.supplierId || "");
+      setBranchId(d.branch?.id || d.branchId || "");
+      setExpected(
+        d.expectedDeliveryDate
+          ? String(d.expectedDeliveryDate).slice(0, 10)
+          : ""
+      );
+      setNotes(d.notes || "");
+      setRows(
+        lines.length
+          ? lines.map((l, i) => ({
+              key: Date.now() + i,
+              productId: l.productId || "",
+              variantId: l.variantId || "",
+              quantity: String(l.quantity ?? 1),
+              unitCost:
+                l.unitCostAtOrder != null ? String(l.unitCostAtOrder) : "",
+            }))
+          : [
+              {
+                key: Date.now(),
+                productId: "",
+                variantId: "",
+                quantity: "1",
+                unitCost: "",
+              },
+            ]
+      );
+      setDetail(null);
+      setFormOpen(true);
+    } catch (e: any) {
+      toast.error(
+        apiErrorMessage(e, "Couldn't open that draft.", {
+          PURCHASE_ORDER_NOT_FOUND: "That purchase order no longer exists.",
+        })
+      );
+    }
+  };
+
   const total = rows.reduce(
     (a, r) =>
       a + (parseFloat(r.quantity) || 0) * (parseFloat(r.unitCost) || 0),
@@ -500,48 +570,108 @@ function POs({ currency }: { currency: string }) {
   );
 
   const submit = async () => {
-    const lineItemsPayload = rows
-      .filter((r) => r.productId)
-      .map((r) => {
-        const prod = products.find((p) => p.id === r.productId);
-        const hasVariants = prod?.variants?.length > 0;
-        return {
-          productId: r.productId,
-          variantId: hasVariants ? r.variantId || undefined : undefined,
-          quantity: parseInt(r.quantity, 10) || 1,
-          unitCostAtOrder: String(parseFloat(r.unitCost) || 0),
-        };
-      });
+    setFormErr("");
 
     if (!supplierId) return setFormErr("Pick a supplier.");
     if (!branchId) return setFormErr("Pick the branch the goods will land in.");
-    if (!lineItemsPayload.length) return setFormErr("Add at least one line.");
-    if (
-      lineItemsPayload.some((li) => {
-        const prod = products.find((p) => p.id === li.productId);
-        return prod?.variants?.length > 0 && !li.variantId;
-      })
-    ) {
-      return setFormErr("Pick a variant for every product that has variants.");
+
+    const selected = rows.filter((r) => r.productId);
+
+    if (!selected.length) return setFormErr("Add at least one line.");
+
+    const lineItemsPayload: {
+      productId: string;
+      variantId?: string;
+      quantity: number;
+      unitCostAtOrder: string;
+    }[] = [];
+
+    for (const r of selected) {
+      const prod = products.find((p) => p.id === r.productId);
+      const hasVariants = (prod?.variants?.length || 0) > 0;
+      const label = prod?.name || "that line";
+
+      const qty = parseInt(r.quantity, 10);
+      if (!Number.isInteger(qty) || qty < 1 || qty > MAX_QTY) {
+        return setFormErr(
+          `Quantity for "${label}" must be a whole number between 1 and ${MAX_QTY.toLocaleString()}.`
+        );
+      }
+
+      const cost = parseFloat(r.unitCost);
+      if (
+        !Number.isFinite(cost) ||
+        cost <= 0 ||
+        cost > MAX_MONEY ||
+        Math.round(cost * 100) !== cost * 100
+      ) {
+        return setFormErr(
+          `Unit cost for "${label}" must be greater than 0 with at most 2 decimal places.`
+        );
+      }
+
+      if (hasVariants && !r.variantId) {
+        return setFormErr(
+          `"${label}" has variants — pick the exact variant you're ordering.`
+        );
+      }
+
+      lineItemsPayload.push({
+        productId: r.productId,
+        variantId: hasVariants ? r.variantId : undefined,
+        quantity: qty,
+        unitCostAtOrder: String(cost),
+      });
     }
 
     setFormBusy(true);
-    setFormErr("");
     try {
-      await api.post("/api/dashboard/purchase-orders", {
+      const body = {
         supplierId,
         branchId,
         expectedDeliveryDate: expected
           ? new Date(expected + "T00:00:00.000Z").toISOString()
-          : undefined,
+          : editing
+            ? null
+            : undefined,
         notes: notes.trim() || undefined,
         lineItems: lineItemsPayload,
-      });
-      toast.success("Draft purchase order saved.");
+      };
+
+      if (editing) {
+        await api.put(
+          `/api/dashboard/purchase-orders/${editing.id}`,
+          body
+        );
+        toast.success("Draft updated.");
+      } else {
+        await api.post("/api/dashboard/purchase-orders", body);
+        toast.success("Draft purchase order saved.");
+      }
+
       setFormOpen(false);
+      setEditing(null);
       load();
     } catch (e: any) {
-      setFormErr(e?.message || "Couldn't create the purchase order.");
+      setFormErr(
+        apiErrorMessage(
+          e,
+          editing
+            ? "Couldn't update the purchase order."
+            : "Couldn't create the purchase order.",
+          {
+            ORDER_NOT_EDITABLE:
+              "This order has already been issued, so it can no longer be edited. Cancel it instead if it will never arrive.",
+            SUPPLIER_NOT_FOUND: "That supplier no longer exists.",
+            BRANCH_NOT_FOUND: "That branch no longer exists.",
+            PRODUCT_NOT_FOUND:
+              "One of the products no longer exists in this store.",
+            VARIANT_NOT_FOUND:
+              "One of the variants no longer exists — it may have been retired.",
+            PURCHASE_ORDER_NOT_FOUND: "That purchase order no longer exists.",
+          }
+        )
+      );
     } finally {
       setFormBusy(false);
     }
@@ -576,7 +706,13 @@ function POs({ currency }: { currency: string }) {
       openDetail(po.id);
       load();
     } catch (e: any) {
-      toast.error(e?.message || "Couldn't issue the order.");
+      toast.error(
+        apiErrorMessage(e, "Couldn't issue the order.", {
+          ORDER_NOT_EDITABLE:
+            "This order has already been issued (or received/cancelled), so it can't be issued again.",
+          PURCHASE_ORDER_NOT_FOUND: "That purchase order no longer exists.",
+        })
+      );
     } finally {
       setActionBusy(false);
     }
@@ -625,7 +761,16 @@ function POs({ currency }: { currency: string }) {
       const msg =
         e?.code === "ORDER_NOT_RECEIVABLE"
           ? "This order can't receive stock in its current status."
-          : e?.message || "Couldn't record the receipt.";
+          : e?.code === "LINE_ITEM_NOT_FOUND"
+            ? "One of those lines doesn't belong to this order — reopen it and try again."
+            : apiErrorMessage(
+                e,
+                "Couldn't record the receipt.",
+                {
+                  PURCHASE_ORDER_NOT_FOUND:
+                    "That purchase order no longer exists.",
+                }
+              );
       toast.error(msg);
     } finally {
       setRecBusy(false);
@@ -656,7 +801,7 @@ function POs({ currency }: { currency: string }) {
           ? "Amount exceeds the balance due."
           : e?.code === "ORDER_NOT_PAYABLE"
           ? "This order can't accept payments in its current status."
-          : e?.message || "Couldn't record the payment.";
+          : apiErrorMessage(e, "Couldn't record the payment.");
       toast.error(msg);
     } finally {
       setPayBusy(false);
@@ -675,8 +820,8 @@ function POs({ currency }: { currency: string }) {
     } catch (e: any) {
       const msg =
         e?.code === "ORDER_NOT_CANCELLABLE"
-          ? "Orders with receipts can't be cancelled."
-          : e?.message || "Couldn't cancel the order.";
+          ? "Orders that have already received stock can't be cancelled."
+          : apiErrorMessage(e, "Couldn't cancel the order.");
       toast.error(msg);
     } finally {
       setActionBusy(false);
@@ -693,7 +838,13 @@ function POs({ currency }: { currency: string }) {
       if (detail?.id === delFor.id) setDetail(null);
       load();
     } catch (e: any) {
-      toast.error(e?.message || "Only draft orders can be deleted.");
+      toast.error(
+        apiErrorMessage(e, "Couldn't delete the draft.", {
+          ORDER_NOT_EDITABLE:
+            "Only drafts can be deleted — an issued order has to be cancelled.",
+          PURCHASE_ORDER_NOT_FOUND: "That purchase order no longer exists.",
+        })
+      );
     } finally {
       setDelBusy(false);
     }
@@ -724,9 +875,25 @@ function POs({ currency }: { currency: string }) {
             </button>
           ))}
         </div>
-        <Button icon="plus" onClick={openCreate}>
-          New purchase order
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            className="w-44"
+            value={supplierF}
+            onChange={(e) => setSupplierF(e.target.value)}
+            aria-label="Filter by supplier"
+          >
+            <option value="">All suppliers</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+
+          <Button icon="plus" onClick={openCreate}>
+            New purchase order
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -809,9 +976,16 @@ function POs({ currency }: { currency: string }) {
       {/* New PO */}
       <Modal
         open={formOpen}
-        onClose={() => setFormOpen(false)}
-        title="New purchase order"
-        sub="Saved as a draft — issuing stamps a PO number and freezes the lines."
+        onClose={() => {
+          setFormOpen(false);
+          setEditing(null);
+        }}
+        title={
+          editing
+            ? "Edit draft purchase order"
+            : "New purchase order"
+        }
+        sub="Saved as a draft — issuing stamps a PO number and freezes the lines. A draft can be changed freely; an issued order can't."
         wide
         footer={
           <>
@@ -825,7 +999,7 @@ function POs({ currency }: { currency: string }) {
               Cancel
             </Button>
             <Button loading={formBusy} onClick={submit} icon="check">
-              Save draft
+              {editing ? "Save changes" : "Save draft"}
             </Button>
           </>
         }
@@ -847,6 +1021,14 @@ function POs({ currency }: { currency: string }) {
                   {s.name}
                 </option>
               ))}
+              {/* An inactive supplier is filtered out of the list above, but a
+                  draft that already names one must still show it. */}
+              {supplierId &&
+                !suppliers.some((s) => s.id === supplierId) && (
+                  <option value={supplierId}>
+                    {editing?.supplier?.name || "Current supplier"}
+                  </option>
+                )}
             </Select>
           </Field>
           <Field label="Goods land in">
@@ -941,11 +1123,20 @@ function POs({ currency }: { currency: string }) {
                       }
                     >
                       <option value="">Variant…</option>
-                      {prod.variants.map((v: any) => (
-                        <option key={v.id} value={v.id}>
-                          {v.name}
-                        </option>
-                      ))}
+                      {prod.variants
+                        // A retired (archived) variant can't be re-ordered —
+                        // it's rejected as VARIANT_NOT_FOUND. Keep the current
+                        // pick visible if the line already names it.
+                        .filter(
+                          (v: any) =>
+                            !v.archivedAt || v.id === r.variantId
+                        )
+                        .map((v: any) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name}
+                            {v.archivedAt ? " (retired)" : ""}
+                          </option>
+                        ))}
                     </Select>
                   )}
                   <Input
@@ -1042,6 +1233,13 @@ function POs({ currency }: { currency: string }) {
                     Delete draft
                   </Button>
                   <Button
+                    variant="outline"
+                    icon="edit"
+                    onClick={() => openEdit(detail)}
+                  >
+                    Edit draft
+                  </Button>
+                  <Button
                     loading={actionBusy}
                     onClick={() => issue(detail)}
                     icon="send"
@@ -1053,13 +1251,18 @@ function POs({ currency }: { currency: string }) {
               {(detail.status === "ORDERED" ||
                 detail.status === "PARTIALLY_RECEIVED") && (
                 <>
-                  <Button
-                    variant="outline"
-                    className="mr-auto"
-                    onClick={() => setCancelFor(detail)}
-                  >
-                    Cancel order
-                  </Button>
+                  {/* Cancelling is only possible from DRAFT or ORDERED, and
+                      only while nothing has been received — once a delivery is
+                      on the ledger the order is the record of it. */}
+                  {receipts.length === 0 && (
+                    <Button
+                      variant="outline"
+                      className="mr-auto"
+                      onClick={() => setCancelFor(detail)}
+                    >
+                      Cancel order
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     onClick={() => {

@@ -9,7 +9,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
-import { asList, cls, fd, pick } from "../lib/format";
+import { apiErrorMessage, asList, cls, fd, pick, rawNum } from "../lib/format";
 
 import {
   Button,
@@ -29,11 +29,15 @@ import {
   Thumb,
   toast,
 } from "../components/ui";
+import StockAdjustModal from "../components/StockAdjustModal";
+import ProductVariantsPanel from "../components/ProductVariantsPanel";
 
 const PAGE = 24;
 const MAX_IMAGES = 10;
 const MAX_VARIANTS = 50;
 const MAX_IMPORT_ROWS = 500;
+const MAX_OPTIONS = 2;
+const MAX_OPTION_NAME = 40;
 
 const MAX_PRODUCT_NAME = 120;
 const MAX_PRODUCT_SKU = 64;
@@ -50,6 +54,12 @@ interface VariantRow {
   initialStock: string;
 }
 
+interface OptionDraft {
+  key: number;
+  name: string;
+  values: string;
+}
+
 interface FormState {
   name: string;
   sku: string;
@@ -63,6 +73,8 @@ interface FormState {
   expiryDate: string;
   initialStock: string;
   images: string[];
+  /** Which of `images` is the listing/checkout photo. */
+  coverImageUrl: string;
   variantRows: VariantRow[];
 }
 
@@ -111,8 +123,27 @@ const BLANK: FormState = {
   expiryDate: "",
   initialStock: "",
   images: [],
+  coverImageUrl: "",
   variantRows: [],
 };
+
+/**
+ * Split the comma-separated option-value box: trimmed, non-empty,
+ * de-duplicated case-insensitively — the same normalisation the API applies.
+ */
+function splitOptionValues(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(",")) {
+    const v = part.trim();
+    if (!v) continue;
+    const k = v.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(v);
+  }
+  return out;
+}
 
 export default function Products() {
   const { me } = useAuth();
@@ -141,6 +172,23 @@ export default function Products() {
 
   const [newCat, setNewCat] = useState("");
   const [newUnit, setNewUnit] = useState("");
+
+  // Branches are needed for the per-branch stock-adjustment endpoint.
+  const [branches, setBranches] = useState<any[]>([]);
+  // The product whose stock is being moved, and the freshly fetched detail
+  // that backs the variants/options panel while the edit modal is open.
+  const [adjustFor, setAdjustFor] = useState<any | null>(null);
+  const [editingDetail, setEditingDetail] = useState<any | null>(null);
+  // Create-time option dimensions (the alternative to a manual variant list).
+  const [createOptions, setCreateOptions] = useState<OptionDraft[]>([]);
+
+  // How many variants the create-time grid would generate (0 = no grid).
+  const createGridCounts = createOptions
+    .map((o) => splitOptionValues(o.values).length)
+    .filter((n) => n > 0);
+  const createGridSize = createGridCounts.length
+    ? createGridCounts.reduce((a, b) => a * b, 1)
+    : 0;
 
   const [imageUrl, setImageUrl] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -202,6 +250,23 @@ export default function Products() {
       );
     } catch {
       // Unit loading is optional for rendering.
+    }
+
+    try {
+      const res = await api.get(
+        "/api/dashboard/branches"
+      );
+
+      setBranches(
+        asList(
+          res,
+          "branches",
+          "items",
+          "data"
+        )
+      );
+    } catch {
+      // Branch loading is optional for rendering.
     }
   }, []);
 
@@ -291,11 +356,13 @@ export default function Products() {
 
   const openCreate = useCallback(() => {
     setEditing(null);
+    setEditingDetail(null);
     setForm(BLANK);
     setFormErr("");
     setNewCat("");
     setNewUnit("");
     setImageUrl("");
+    setCreateOptions([]);
     setFormOpen(true);
   }, []);
 
@@ -345,6 +412,11 @@ export default function Products() {
 
       initialStock: "",
 
+      coverImageUrl:
+        x.coverImageUrl ||
+        x.images?.[0] ||
+        "",
+
       images:
         Array.isArray(x.images)
           ? [...x.images]
@@ -352,30 +424,31 @@ export default function Products() {
             ? [x.coverImageUrl]
             : [],
 
-      variantRows:
-        Array.isArray(x.variants)
-          ? x.variants.map(
-              (v: any, i: number) => ({
-                key: i,
-                name: v.name || "",
-                sellingPrice:
-                  v.sellingPrice != null
-                    ? String(
-                        v.sellingPrice
-                      )
-                    : "",
-                sku: v.sku || "",
-                initialStock: "",
-              })
-            )
-          : [],
+      // Variants are managed through the dedicated variants panel after
+      // creation (`PUT /options`, `/variants`, archive/restore) — never
+      // through the product PATCH body.
+      variantRows: [],
     });
 
     setFormErr("");
     setNewCat("");
     setNewUnit("");
     setImageUrl("");
+    setCreateOptions([]);
     setFormOpen(true);
+
+    // Back the variants/options panel with the server's current grid rather
+    // than a possibly stale list row.
+    setEditingDetail(x);
+    api
+      .get(`/api/dashboard/products/${x.id}`)
+      .then((res: any) => {
+        const fresh = res?.product ?? res;
+        if (fresh?.id) setEditingDetail(fresh);
+      })
+      .catch(() => {
+        /* the list row is good enough to render the form */
+      });
   }, []);
 
   useEffect(() => {
@@ -513,10 +586,11 @@ export default function Products() {
      * -------------------------------------------------------------------------
      */
 
-    const variants =
-      form.variantRows.filter(
-        (v) => v.name.trim()
-      );
+    const variants = editing
+      ? []
+      : form.variantRows.filter(
+          (v) => v.name.trim()
+        );
 
     if (
       variants.length >
@@ -622,6 +696,82 @@ export default function Products() {
           );
           return;
         }
+      }
+    }
+
+    /*
+     * -------------------------------------------------------------------------
+     * OPTION DIMENSIONS (create only)
+     *
+     * `initialStock`, an explicit `variants` list and generated `options` are
+     * mutually exclusive ways to seed stock/variants, so only one may be sent.
+     * -------------------------------------------------------------------------
+     */
+
+    const cleanOptions: { name: string; values: string[] }[] = editing
+      ? []
+      : createOptions
+          .map((o) => ({
+            name: o.name.trim(),
+            values: splitOptionValues(o.values),
+          }))
+          .filter((o) => o.name || o.values.length > 0);
+
+    if (cleanOptions.length > 0) {
+      if (cleanOptions.length > MAX_OPTIONS) {
+        setFormErr(`A product can have at most ${MAX_OPTIONS} dimensions.`);
+        return;
+      }
+
+      if (opening != null) {
+        setFormErr(
+          "Opening stock and option dimensions can't be used together — the grid's variants each hold their own stock."
+        );
+        return;
+      }
+
+      if (variants.length > 0) {
+        setFormErr(
+          "Use either option dimensions or a manual variant list — not both."
+        );
+        return;
+      }
+
+      for (const option of cleanOptions) {
+        if (!option.name) {
+          setFormErr("Every dimension needs a name — e.g. Colour or Size.");
+          return;
+        }
+        if (option.name.length > MAX_OPTION_NAME) {
+          setFormErr(
+            `"${option.name}" is too long — dimensions are ${MAX_OPTION_NAME} characters or fewer.`
+          );
+          return;
+        }
+        if (option.values.length === 0) {
+          setFormErr(`Add at least one value for "${option.name}".`);
+          return;
+        }
+        for (const value of option.values) {
+          if (value.length > MAX_OPTION_NAME) {
+            setFormErr(
+              `"${value}" is too long — values are ${MAX_OPTION_NAME} characters or fewer.`
+            );
+            return;
+          }
+        }
+      }
+
+      const grid = cleanOptions.reduce(
+        (a, o) => a * o.values.length,
+        1
+      );
+
+      if (grid > MAX_VARIANTS) {
+        setFormErr(
+          `Those dimensions make ${grid} variants — the limit is ${MAX_VARIANTS} per product.`
+        );
+        return;
       }
     }
 
@@ -893,8 +1043,14 @@ export default function Products() {
             MAX_IMAGES
           );
 
+        // The cover must be one of the images actually being saved.
         payload.coverImageUrl =
-          form.images[0];
+          form.coverImageUrl &&
+          form.images.includes(
+            form.coverImageUrl
+          )
+            ? form.coverImageUrl
+            : form.images[0];
       } else if (editing) {
         payload.images = [];
         payload.coverImageUrl =
@@ -916,7 +1072,11 @@ export default function Products() {
        */
 
       if (!editing) {
-        if (variants.length > 0) {
+        if (cleanOptions.length > 0) {
+          // Generated grid: the server creates the cartesian product.
+          payload.options =
+            cleanOptions;
+        } else if (variants.length > 0) {
           payload.variants =
             variants.map(
               (v) => {
@@ -1038,8 +1198,11 @@ export default function Products() {
       await load();
     } catch (e: any) {
       toast.error(
-        e?.message ||
-          "Couldn't change product status."
+        apiErrorMessage(e, "Couldn't change product status.", {
+          PRODUCT_NOT_READY_TO_PUBLISH:
+            "This product isn't ready to go live — it still needs a category, a unit and a photo.",
+          NOT_FOUND: "That product no longer exists.",
+        })
       );
     }
   };
@@ -1077,6 +1240,82 @@ export default function Products() {
         setDelBusy(false);
       }
     };
+
+  /*
+   * ---------------------------------------------------------------------------
+   * STOCK
+   *
+   * `branchStockAfter` is authoritative, so re-read the list (and the open
+   * detail) instead of trusting a local guess.
+   * ---------------------------------------------------------------------------
+   */
+
+  const onStockAdjusted = async () => {
+    await load();
+
+    const id =
+      editingDetail?.id ||
+      adjustFor?.id;
+
+    if (!id) return;
+
+    try {
+      const res: any = await api.get(
+        `/api/dashboard/products/${id}`
+      );
+
+      const fresh = res?.product ?? res;
+
+      if (fresh?.id) {
+        setEditingDetail(fresh);
+
+        setItems((list) =>
+          list.map((p) =>
+            p.id === fresh.id
+              ? { ...p, ...fresh }
+              : p
+          )
+        );
+      }
+    } catch {
+      /* the list refresh above is enough */
+    }
+  };
+
+  const onVariantStateChanged = (next: any) => {
+    if (!next?.id) return;
+
+    setEditingDetail(next);
+
+    setItems((list) =>
+      list.map((p) =>
+        p.id === next.id
+          ? { ...p, ...next }
+          : p
+      )
+    );
+  };
+
+  /*
+   * Make sure the stock modal always has the product's variant list: a list
+   * row may predate a variant being added elsewhere, and a variant product
+   * has no product-level stock to adjust.
+   */
+  useEffect(() => {
+    const id = adjustFor?.id;
+
+    if (!id || Array.isArray(adjustFor?.variants)) return;
+
+    api
+      .get(`/api/dashboard/products/${id}`)
+      .then((res: any) => {
+        const fresh = res?.product ?? res;
+        if (fresh?.id) setAdjustFor(fresh);
+      })
+      .catch(() => {
+        /* the row we already have is enough to render the modal */
+      });
+  }, [adjustFor]);
 
   /*
    * ---------------------------------------------------------------------------
@@ -2044,6 +2283,10 @@ export default function Products() {
                     Stock
                   </th>
 
+                  <th className="text-right">
+                    Sold
+                  </th>
+
                   <th>
                     Status
                   </th>
@@ -2150,10 +2393,27 @@ export default function Products() {
                         <td className="whitespace-nowrap text-right">
                           {variants.length ? (
                             <span className="text-xs font-bold text-ink-500">
+                              {variants
+                                .reduce(
+                                  (
+                                    a: number,
+                                    v: any
+                                  ) =>
+                                    a +
+                                    rawNum(
+                                      v.quantity
+                                    ),
+                                  0
+                                )
+                                .toLocaleString()}{" "}
+                              across{" "}
                               {
                                 variants.length
                               }{" "}
-                              variants
+                              {variants.length ===
+                              1
+                                ? "variant"
+                                : "variants"}
                             </span>
                           ) : (
                             <span
@@ -2168,6 +2428,15 @@ export default function Products() {
                               }
                             </span>
                           )}
+                        </td>
+
+                        <td className="whitespace-nowrap text-right tabular-nums text-ink-500">
+                          {product.salesCount !=
+                          null
+                            ? rawNum(
+                                product.salesCount
+                              ).toLocaleString()
+                            : "—"}
                         </td>
 
                         <td>
@@ -2198,6 +2467,16 @@ export default function Products() {
 
                         <td>
                           <div className="flex items-center justify-end gap-0.5">
+                            <IconBtn
+                              name="refresh"
+                              label="Adjust stock"
+                              onClick={() =>
+                                setAdjustFor(
+                                  product
+                                )
+                              }
+                            />
+
                             <IconBtn
                               name="edit"
                               label="Edit"
@@ -2296,6 +2575,20 @@ export default function Products() {
             >
               Cancel
             </Button>
+
+            {editing && (
+              <Button
+                variant="outline"
+                icon="refresh"
+                onClick={() =>
+                  setAdjustFor(
+                    editingDetail || editing
+                  )
+                }
+              >
+                Adjust stock
+              </Button>
+            )}
 
             <Button
               loading={
@@ -2435,6 +2728,7 @@ export default function Products() {
           </Field>
 
           {!editing &&
+            createOptions.length === 0 &&
             form.variantRows.filter(
               (v) =>
                 v.name.trim()
@@ -2645,15 +2939,45 @@ export default function Products() {
                   key={`${src}-${index}`}
                   className="group relative"
                 >
-                  <Thumb
-                    src={src}
-                    className="h-16 w-16"
-                  />
+                  <button
+                    type="button"
+                    title={
+                      src ===
+                      (form.coverImageUrl ||
+                        form.images[0])
+                        ? "This is the cover photo"
+                        : "Use as the cover photo"
+                    }
+                    onClick={() =>
+                      setForm(
+                        (current) => ({
+                          ...current,
+                          coverImageUrl:
+                            src,
+                        })
+                      )
+                    }
+                    className="block"
+                  >
+                    <Thumb
+                      src={src}
+                      className="h-16 w-16"
+                    />
+                  </button>
 
-                  {index ===
-                    0 && (
+                  {src ===
+                    (form.coverImageUrl ||
+                      form.images[0]) && (
                     <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-ink-900 px-1.5 py-px text-[9px] font-extrabold uppercase text-cream-50">
                       Cover
+                    </span>
+                  )}
+
+                  {src !==
+                    (form.coverImageUrl ||
+                      form.images[0]) && (
+                    <span className="absolute -bottom-1.5 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded-full bg-cream-200 px-1.5 py-px text-[9px] font-extrabold uppercase text-ink-500 group-hover:block">
+                      Make cover
                     </span>
                   )}
 
@@ -2757,15 +3081,29 @@ export default function Products() {
             </Button>
           </div>
         </div>
-        {/* Variants */}
+        {/* Variants — a product created here can define its grid inline; an
+            existing product manages it through the dedicated variant routes
+            (PUT /options, /variants, archive + restore). */}
+        {editing ? (
+          <div className="mt-5">
+            <label className="lbl">
+              Variants &amp; options
+            </label>
 
+            <ProductVariantsPanel
+              product={editingDetail || editing}
+              currency={currency}
+              onChanged={onVariantStateChanged}
+            />
+          </div>
+        ) : (
         <div className="mt-5">
           <div className="flex items-center justify-between">
             <label className="lbl !mb-0">
-              Variants (sizes, colors, etc.)
+              Variants (sizes, colours, etc.)
             </label>
 
-            {!editing && (
+            {createOptions.length === 0 && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -2807,15 +3145,140 @@ export default function Products() {
           </div>
 
           <p className="mb-2 mt-1 text-xs text-ink-400">
-            Use variants if this product comes in more than one
-            version that you stock and sell separately — for
-            example a shirt in "Small", "Medium", "Large", or a
-            drink in "50cl" and "1 Litre". Each variant gets its
-            own price and its own stock count, tracked
-            separately from the main product.
+            Optional — skip this whole section if the product comes in
+            one version only. You can list variants by hand, or define
+            dimensions and let Brikoh generate every combination.
+            Either way you can re-price, re-SKU, retire and restore
+            variants later, and each one holds its own stock.
           </p>
 
-          {form.variantRows.length === 0 && !editing && (
+          {/* Dimensions → generated grid, the alternative to the manual list. */}
+          <div className="mb-3 rounded-xl border border-cream-200 bg-cream-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-extrabold">
+                Generate from dimensions
+              </p>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                icon="plus"
+                disabled={
+                  createOptions.length >=
+                  MAX_OPTIONS
+                }
+                onClick={() =>
+                  setCreateOptions(
+                    (current) => [
+                      ...current,
+                      {
+                        key:
+                          Date.now() +
+                          current.length,
+                        name: "",
+                        values: "",
+                      },
+                    ]
+                  )
+                }
+              >
+                Add dimension
+              </Button>
+            </div>
+
+            {createOptions.length === 0 ? (
+              <p className="mt-1.5 text-xs text-ink-400">
+                e.g. Colour [Red, Blue] × Size [S, M] makes 4
+                variants — each with its own price, SKU and stock.
+                Leave this empty to type your variants one by one
+                instead.
+              </p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {createOptions.map((option) => (
+                  <div
+                    key={option.key}
+                    className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_auto]"
+                  >
+                    <Input
+                      placeholder="Colour"
+                      maxLength={
+                        MAX_OPTION_NAME
+                      }
+                      value={option.name}
+                      onChange={(e) =>
+                        setCreateOptions(
+                          (current) =>
+                            current.map(
+                              (x) =>
+                                x.key ===
+                                option.key
+                                  ? {
+                                      ...x,
+                                      name: e
+                                        .target
+                                        .value,
+                                    }
+                                  : x
+                            )
+                        )
+                      }
+                    />
+
+                    <Input
+                      placeholder="Red, Blue"
+                      value={option.values}
+                      onChange={(e) =>
+                        setCreateOptions(
+                          (current) =>
+                            current.map(
+                              (x) =>
+                                x.key ===
+                                option.key
+                                  ? {
+                                      ...x,
+                                      values:
+                                        e.target
+                                          .value,
+                                    }
+                                  : x
+                            )
+                        )
+                      }
+                    />
+
+                    <IconBtn
+                      name="trash"
+                      label="Remove dimension"
+                      onClick={() =>
+                        setCreateOptions(
+                          (current) =>
+                            current.filter(
+                              (x) =>
+                                x.key !==
+                                option.key
+                            )
+                        )
+                      }
+                    />
+                  </div>
+                ))}
+
+                {createGridSize > 0 && (
+                  <p className="text-xs font-semibold text-ink-500">
+                    {createGridSize} variant
+                    {createGridSize === 1
+                      ? ""
+                      : "s"}{" "}
+                    will be created — up to{" "}
+                    {MAX_VARIANTS}.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {form.variantRows.length === 0 && createOptions.length === 0 && (
             <p className="mb-2 text-xs text-ink-400">
               If this product only comes in one version, skip
               this section entirely — the price and stock you
@@ -2824,12 +3287,12 @@ export default function Products() {
           )}
 
           <p className="mb-3 text-xs text-ink-400">
-            {editing
-              ? "Variants can only be set up when a product is first created, so they can't be edited or removed here. To change variants, delete this product and create it again with the correct variants."
-              : `Variants can only be added right now, while creating the product — you won't be able to add, remove, or edit them later. You can add up to ${MAX_VARIANTS}.`}
+            {createOptions.length > 0
+              ? "The grid above replaces the hand-typed list. Opening stock can't be combined with a grid — each generated variant holds its own stock, and you can top it up with Adjust stock afterwards."
+              : `Up to ${MAX_VARIANTS} variants. You can edit, retire and restore them from this product's edit screen once it exists.`}
           </p>
 
-          {form.variantRows.map(
+          {createOptions.length === 0 && form.variantRows.map(
             (variant, index) => (
               <div
                 key={
@@ -3044,6 +3507,7 @@ export default function Products() {
             )
           )}
         </div>
+        )}
       </Modal>
 
       {/* ------------------------------------------------------------------ */}
@@ -3385,6 +3849,20 @@ export default function Products() {
           </div>
         )}
       </Modal>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* STOCK ADJUSTMENT                                                    */}
+      {/* ------------------------------------------------------------------ */}
+
+      <StockAdjustModal
+        open={!!adjustFor}
+        onClose={() =>
+          setAdjustFor(null)
+        }
+        product={adjustFor}
+        branches={branches}
+        onDone={onStockAdjusted}
+      />
 
       {/* ------------------------------------------------------------------ */}
       {/* DELETE                                                              */}

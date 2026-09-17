@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
-import { asList, cls, fd, pick, rawNum, titleCase } from "../lib/format";
+import { apiErrorMessage, asList, cls, fd, pick, rawNum, titleCase } from "../lib/format";
 import {
   Button,
   Confirm,
@@ -17,6 +17,7 @@ import {
   PageHead,
   Select,
   StatusBadge,
+  Toggle,
   toast,
 } from "../components/ui";
 
@@ -32,14 +33,8 @@ interface LineRow {
   unitPrice: string;
 }
 
-// Shared error -> message mapping. RATE_LIMITED is checked first everywhere
-// since writes on this resource are rate-limited (60s / 300 req).
-function apiErrorMessage(e: any, fallback: string, extra?: Record<string, string>) {
-  const code = e?.code;
-  if (code === "RATE_LIMITED") return "Too many requests — please slow down and try again.";
-  if (extra && code && extra[code]) return extra[code];
-  return e?.message || fallback;
-}
+// `apiErrorMessage` (shared error -> message mapping) lives in lib/format so
+// every dashboard page maps the contract's error codes the same way.
 
 export default function Invoices() {
   const { me } = useAuth();
@@ -85,6 +80,10 @@ export default function Invoices() {
   const [voidFor, setVoidFor] = useState<any | null>(null);
   const [delFor, setDelFor] = useState<any | null>(null);
   const [delBusy, setDelBusy] = useState(false);
+
+  // Public share link (disable/enable without voiding)
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkOffFor, setLinkOffFor] = useState<any | null>(null);
 
   // ---------- Catalog ----------
   const loadCatalog = useCallback(async () => {
@@ -356,6 +355,37 @@ export default function Invoices() {
       );
     } finally {
       setDelBusy(false);
+    }
+  };
+
+  // ---------- Public share link ----------
+  // Disabling 404s the public read WITHOUT voiding the invoice, so a link that
+  // was shared too widely can be revoked with no financial side effect.
+  const setLinkEnabled = async (enabled: boolean) => {
+    if (!detail?.id) return;
+    setLinkBusy(true);
+    try {
+      const res: any = await api.post(
+        `/api/dashboard/invoices/${detail.id}/${
+          enabled ? "enable-link" : "disable-link"
+        }`
+      );
+      const inv = res?.invoice ?? res;
+      if (inv?.id) setDetail(inv);
+      toast.success(
+        enabled ? "Customer link is live again." : "Customer link turned off."
+      );
+      setLinkOffFor(null);
+      load();
+    } catch (e: any) {
+      toast.error(
+        apiErrorMessage(e, "Couldn't change the customer link.", {
+          INVOICE_NOT_ISSUED: "Only issued invoices have a link to toggle.",
+          INVOICE_NOT_FOUND: "That invoice no longer exists.",
+        })
+      );
+    } finally {
+      setLinkBusy(false);
     }
   };
 
@@ -749,19 +779,55 @@ export default function Invoices() {
           </div>
         ) : (
           <div>
-            {normalizedShareUrl(detail.shareUrl) && (
-              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-2.5">
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-wide text-ink-400">
-                    Customer link
-                  </p>
-                  <p className="truncate text-sm text-ink-600">
-                    {normalizedShareUrl(detail.shareUrl)}
-                  </p>
+            {/* Public link — shared out-of-band by the merchant, and revocable
+                without voiding the invoice. */}
+            {detail.status !== "DRAFT" && (
+              <div className="mb-4 rounded-xl border border-cream-200 bg-cream-50 px-3.5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wide text-ink-400">
+                      Customer link
+                    </p>
+                    {normalizedShareUrl(detail.shareUrl) ? (
+                      <p className="truncate text-sm text-ink-600">
+                        {normalizedShareUrl(detail.shareUrl)}
+                      </p>
+                    ) : (
+                      <p className="text-sm font-semibold text-ink-500">
+                        Turned off — the public link now looks like an unknown
+                        invoice.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {normalizedShareUrl(detail.shareUrl) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon="copy"
+                        onClick={copyShareLink}
+                      >
+                        Copy
+                      </Button>
+                    )}
+
+                    <Toggle
+                      checked={detail.linkEnabled !== false}
+                      onChange={(v) =>
+                        v ? setLinkEnabled(true) : setLinkOffFor(detail)
+                      }
+                      label="Link on"
+                    />
+                  </div>
                 </div>
-                <Button variant="outline" size="sm" icon="copy" onClick={copyShareLink}>
-                  Copy
-                </Button>
+
+                {detail.linkEnabled === false && (
+                  <p className="mt-2 text-xs text-ink-400">
+                    Nothing financial changed — the invoice is still payable and
+                    still lists here. Switch the link back on whenever you like.
+                  </p>
+                )}
               </div>
             )}
 
@@ -914,6 +980,17 @@ export default function Invoices() {
         title="Void this invoice?"
         body="Voiding cancels the invoice. Invoices with recorded payments can't be voided."
         confirmLabel="Void invoice"
+      />
+      {/* Revoke a shared link — 404s the public read without voiding, so it
+          carries no financial side effect. */}
+      <Confirm
+        open={!!linkOffFor}
+        onClose={() => setLinkOffFor(null)}
+        onConfirm={() => setLinkEnabled(false)}
+        loading={linkBusy}
+        title="Turn the customer link off?"
+        body="The public link stops working immediately and looks like an unknown invoice. Nothing else changes — the invoice stays payable, keeps its payments, and you can switch the link back on at any time."
+        confirmLabel="Turn link off"
       />
       <Confirm
         open={!!delFor}

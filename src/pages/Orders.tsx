@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { cls, fdt, titleCase } from "../lib/format";
@@ -70,6 +71,13 @@ export default function Orders() {
   const [detail, setDetail] = useState<any | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
 
+  // Deep-link: /dashboard/orders?customerId=<id> pre-filters to one customer's
+  // orders (the Customers page links here). Read once on mount.
+  const [searchParams] = useSearchParams();
+  const [customerId] = useState(
+    () => searchParams.get("customerId") || ""
+  );
+
   const [paymentBusy, setPaymentBusy] = useState(false);
   const [confirmAmount, setConfirmAmount] = useState("");
 
@@ -109,6 +117,10 @@ export default function Orders() {
           qs.set("end", end);
         }
 
+        if (customerId) {
+          qs.set("customerId", customerId);
+        }
+
         if (cursor) {
           qs.set("cursor", cursor);
         }
@@ -131,7 +143,7 @@ export default function Orders() {
         setLoadingMore(false);
       }
     },
-    [status, paymentMethod, source, q, start, end]
+    [status, paymentMethod, source, q, start, end, customerId]
   );
 
   useEffect(() => {

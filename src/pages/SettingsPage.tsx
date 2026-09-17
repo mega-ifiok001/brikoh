@@ -679,6 +679,7 @@ function AlertsTab() {
     lowStockAlerts: true,
     paymentAlerts: true,
     expiringSoonAlerts: true,
+    receiptsEnabled: true,
   });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -691,6 +692,7 @@ function AlertsTab() {
         lowStockAlerts: res.lowStockAlerts !== false,
         paymentAlerts: res.paymentAlerts !== false,
         expiringSoonAlerts: res.expiringSoonAlerts !== false,
+        receiptsEnabled: res.receiptsEnabled !== false,
       });
     } catch (e: any) {
       toast.error(e?.message || "Couldn't load alert preferences.");
@@ -730,6 +732,11 @@ function AlertsTab() {
       key: "expiringSoonAlerts" as const,
       title: "Expiring products",
       body: "Email me when something on the shelf is about to pass its expiry date.",
+    },
+    {
+      key: "receiptsEnabled" as const,
+      title: "Customer receipts",
+      body: "Email your customer a branded receipt after a successful sale. Uses the email captured on the order — a walk-in sale with no email sends nothing.",
     },
   ];
 

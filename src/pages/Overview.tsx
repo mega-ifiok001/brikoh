@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getAccess } from "../lib/access";
 import { api } from "../lib/api";
-import { ago, asList, pick, rawNum, titleCase } from "../lib/format";
+import { ago, apiErrorMessage, asList, pick, rawNum, titleCase } from "../lib/format";
 import {
   Badge,
   Button,
@@ -14,7 +14,9 @@ import {
   PageHead,
   StatCard,
   StatusBadge,
+  toast,
 } from "../components/ui";
+import StockAdjustModal from "../components/StockAdjustModal";
 
 interface Part {
   overview: any | null;
@@ -31,6 +33,39 @@ export default function Overview() {
   const currency: string = store.currency || "NGN";
   const [p, setP] = useState<Part>({ overview: null, activity: [], wallet: null, loaded: 0, total: 3 });
   const [fatal, setFatal] = useState<string | null>(null);
+
+  // Restocking straight from the low-stock list: stock only ever moves through
+  // the stock-adjustment endpoint, so we need the product + branch list.
+  const [branches, setBranches] = useState<any[]>([]);
+  const [adjustFor, setAdjustFor] = useState<any | null>(null);
+  const [adjustBusy, setAdjustBusy] = useState<string | null>(null);
+
+  const openAdjust = useCallback(
+    async (productId: string) => {
+      if (!productId) return;
+      setAdjustBusy(productId);
+      try {
+        const [pRes, bRes] = await Promise.all([
+          api.get(`/api/dashboard/products/${productId}`),
+          branches.length
+            ? Promise.resolve(null)
+            : api.get("/api/dashboard/branches").catch(() => null),
+        ]);
+
+        if (bRes) setBranches(asList(bRes, "branches", "items", "data"));
+
+        const product = pRes?.product ?? pRes;
+        if (!product?.id) throw new Error("Product not found");
+
+        setAdjustFor(product);
+      } catch (e: any) {
+        toast.error(apiErrorMessage(e, "Couldn't open that product."));
+      } finally {
+        setAdjustBusy(null);
+      }
+    },
+    [branches.length]
+  );
 
   const load = useCallback(async () => {
     setFatal(null);
@@ -240,6 +275,14 @@ export default function Overview() {
                       <p className="text-xs text-ink-400">{x.branchName || "Branch"}</p>
                     </div>
                     <Badge tone={x.quantity <= 0 ? "danger" : "gold"}>{x.quantity <= 0 ? "Out" : `${x.quantity} left`}</Badge>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-bold text-brand-600 hover:underline disabled:opacity-50"
+                      disabled={adjustBusy === x.productId}
+                      onClick={() => openAdjust(x.productId)}
+                    >
+                      {adjustBusy === x.productId ? "Opening…" : "Restock"}
+                    </button>
                   </div>
                 ))}
               </div>
@@ -323,6 +366,15 @@ export default function Overview() {
           </div>
         </div>
       </div>
+
+      {/* Stock never changes inline — it goes through the adjustment endpoint. */}
+      <StockAdjustModal
+        open={!!adjustFor}
+        onClose={() => setAdjustFor(null)}
+        product={adjustFor}
+        branches={branches}
+        onDone={load}
+      />
     </div>
   );
 }

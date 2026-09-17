@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { asList, cls, fd, rawNum, titleCase } from "../lib/format";
+import DeliveryOptions from "./DeliveryOptions";
 import {
   Badge,
   Button,
@@ -37,6 +38,7 @@ export default function StorefrontStudio() {
         tabs={[
           { id: "storefront", label: "Theme & branding" },
           { id: "campaigns", label: "Campaigns" },
+          { id: "delivery", label: "Delivery options" },
           { id: "payments", label: "Online payments" },
         ]}
         active={tab}
@@ -46,6 +48,7 @@ export default function StorefrontStudio() {
         <Studio store={store} patchStore={patchStore} />
       )}
       {tab === "campaigns" && <Campaigns />}
+      {tab === "delivery" && <DeliveryOptions />}
       {tab === "payments" && <Payments />}
     </div>
   );

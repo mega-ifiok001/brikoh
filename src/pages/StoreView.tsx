@@ -23,6 +23,12 @@ interface StorefrontVariant {
   name: string;
   sellingPrice: string | null;
   stockStatus: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
+  options?: Array<{ name: string; value: string }>;
+}
+
+interface StorefrontOption {
+  name: string;
+  values: string[];
 }
 
 interface StorefrontProduct {
@@ -35,8 +41,28 @@ interface StorefrontProduct {
   images: string[];
   category: StorefrontCategory | null;
   unit: { id: string; name: string } | null;
+  options?: StorefrontOption[];
   variants: StorefrontVariant[];
   stockStatus: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
+}
+
+interface DeliveryZone {
+  id: string;
+  name: string;
+  fee: string;
+}
+
+interface DeliveryOption {
+  id: string;
+  name: string;
+  kind: "PICKUP" | "DELIVERY";
+  description: string | null;
+  baseFee: string;
+  isActive?: boolean;
+  pickupLocationId?: string | null;
+  pickupAddressText?: string | null;
+  pickupLocation?: { id: string; name: string; address: string } | null;
+  zones: DeliveryZone[];
 }
 
 interface StorefrontCampaign {
@@ -73,6 +99,12 @@ interface StorefrontResponse {
   };
 
   campaign: StorefrontCampaign | null;
+
+  /*
+   * Store's active fulfilment choices (PICKUP / DELIVERY with zones).
+   * May not exist on older backend deployments — read defensively.
+   */
+  deliveryOptions?: DeliveryOption[];
 
   /*
    * IMPORTANT: these two may not exist on older backend deployments,
@@ -599,10 +631,14 @@ export default function StoreView() {
   }>({});
 
   const [availablePaymentMethods, setAvailablePaymentMethods] = useState<PaymentMethod[]>([]);
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
+  const [deliveryOptionId, setDeliveryOptionId] = useState<string>("");
+  const [deliveryZoneId, setDeliveryZoneId] = useState<string>("");
 
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
   const [rateLimited, setRateLimited] = useState(false);
 
@@ -611,6 +647,8 @@ export default function StoreView() {
   const [productsMessage, setProductsMessage] = useState<string | null>(null);
 
   const [catF, setCatF] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [variantPick, setVariantPick] = useState<StorefrontProduct | null>(null);
@@ -682,6 +720,11 @@ export default function StoreView() {
       const methods = normalizePaymentMethods(rawResponse);
       setAvailablePaymentMethods(methods);
 
+      // Fulfilment options — defensive: absent on older deployments.
+      setDeliveryOptions(Array.isArray(res?.deliveryOptions) ? res.deliveryOptions : []);
+      setDeliveryOptionId("");
+      setDeliveryZoneId("");
+
       if (methods.includes("paystack")) {
         setPaymentMethod("paystack");
       } else if (methods.includes("bank_transfer")) {
@@ -711,7 +754,7 @@ export default function StoreView() {
   /* ------------------------------------------------------------ Products */
 
   const loadProducts = useCallback(
-    async (categoryId?: string) => {
+    async (categoryId?: string, q?: string) => {
       setProductsLoading(true);
       setProductsMessage(null);
       setProductsCursor(null);
@@ -720,6 +763,7 @@ export default function StoreView() {
         const params = new URLSearchParams();
         params.set("limit", "200");
         if (categoryId) params.set("categoryId", categoryId);
+        if (q) params.set("q", q);
 
         const rawResponse: any = await api.publicGet(
           `/api/public/storefront/${encodeURIComponent(subdomain)}/products?${params.toString()}`
@@ -755,6 +799,7 @@ export default function StoreView() {
       const params = new URLSearchParams();
       params.set("limit", "200");
       params.set("cursor", productsCursor);
+      if (searchQ.trim()) params.set("q", searchQ.trim());
 
       const rawResponse: any = await api.publicGet(
         `/api/public/storefront/${encodeURIComponent(subdomain)}/products?${params.toString()}`
@@ -775,7 +820,7 @@ export default function StoreView() {
     } finally {
       setLoadingMore(false);
     }
-  }, [subdomain, productsCursor, loadingMore, productsTotal]);
+  }, [subdomain, productsCursor, loadingMore, productsTotal, searchQ]);
 
   /* ------------------------------------------------------------ Initial loading */
 
@@ -785,13 +830,56 @@ export default function StoreView() {
     loadProducts();
   }, [loadStorefront, loadCategories, loadProducts]);
 
-  /* ------------------------------------------------------------ Category filtering */
+  /* ------------------------------------------------------------ Category + search filtering */
 
   useEffect(() => {
     if (!store) return;
     const categoryId = categories.find((category) => category.name === catF)?.id || "";
-    loadProducts(categoryId || undefined);
-  }, [catF, categories, store, loadProducts]);
+    loadProducts(categoryId || undefined, searchQ.trim() || undefined);
+  }, [catF, searchQ, categories, store, loadProducts]);
+
+  // Debounce the search box so typing doesn't fire a request per keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => setSearchQ(searchInput.trim()), 350);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+
+  /* ------------------------------------------------------------ Product detail (deep link) */
+
+  /*
+   * A shared product link (/s/:subdomain/p/:productId) must work even when
+   * the product isn't in the first grid page — fetch the dedicated public
+   * product endpoint in that case and merge it into the grid.
+   */
+  useEffect(() => {
+    if (!productId || !store) return;
+    if (products.some((p) => p.id === productId)) return;
+
+    let cancelled = false;
+    setDetailLoading(true);
+
+    api
+      .publicGet(
+        `/api/public/storefront/${encodeURIComponent(subdomain)}/products/${encodeURIComponent(productId)}`
+      )
+      .then((raw: any) => {
+        const p: StorefrontProduct | undefined = raw?.id ? raw : raw?.data?.id ? raw.data : undefined;
+        if (cancelled || !p?.id) return;
+        setProducts((current) =>
+          current.some((x) => x.id === p.id) ? current : [p, ...current]
+        );
+      })
+      .catch(() => {
+        /* 404 etc. — the product simply won't render; the not-found panel shows. */
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [productId, store, subdomain, products]);
 
   /* ------------------------------------------------------------ GA4 */
 
@@ -1002,6 +1090,15 @@ export default function StoreView() {
       return setErr("That payment method isn't currently available for this store.");
     }
 
+    // When the store publishes fulfilment options, one must be chosen —
+    // and a DELIVERY option with zones requires a zone (it prices the fee).
+    if (deliveryOptions.length > 0 && !selectedDelivery) {
+      return setErr("Please choose a delivery or pickup option.");
+    }
+    if (selectedDelivery && selectedDelivery.zones.length > 0 && !selectedZone) {
+      return setErr("Please choose a delivery zone.");
+    }
+
     setCheckingOut(true);
 
     try {
@@ -1017,6 +1114,8 @@ export default function StoreView() {
           quantity: line.qty,
         })),
         ...(code.trim() ? { discountCode: code.trim().toUpperCase() } : {}),
+        ...(selectedDelivery ? { deliveryOptionId: selectedDelivery.id } : {}),
+        ...(selectedZone ? { deliveryZoneId: selectedZone.id } : {}),
         origin: "DIRECT",
         paymentMethod,
       };
@@ -1144,6 +1243,18 @@ export default function StoreView() {
 
   const showDetail = !!productId;
   const detail = productId ? products.find((p) => p.id === productId) : undefined;
+
+  /* ------------------------------------------------------------ Delivery (checkout) */
+
+  const selectedDelivery =
+    deliveryOptions.find((option) => option.id === deliveryOptionId) || null;
+  const selectedZone =
+    selectedDelivery?.zones.find((zone) => zone.id === deliveryZoneId) || null;
+  // Fee = baseFee + zoneFee (the zone fee applies only when a zone is chosen).
+  const deliveryFee = selectedDelivery
+    ? rawNum(selectedDelivery.baseFee) + (selectedZone ? rawNum(selectedZone.fee) : 0)
+    : 0;
+  const cartTotal = subtotal + deliveryFee;
 
   const paystackAvailable = availablePaymentMethods.includes("paystack");
   const bankTransferAvailable = availablePaymentMethods.includes("bank_transfer");
@@ -1288,7 +1399,7 @@ export default function StoreView() {
             onAdd={add}
             onBack={() => navigate(`/s/${store.subdomain}`)}
           />
-        ) : productsLoading ? (
+        ) : detailLoading || productsLoading ? (
           <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
             <div className="card flex flex-col items-center gap-3 px-6 py-16 text-center">
               <Spinner size={24} className="text-ink-400" />
@@ -1300,7 +1411,9 @@ export default function StoreView() {
             <div className="card flex flex-col items-center gap-2 px-6 py-16 text-center">
               <Icon name="box" size={28} className="text-brand-300" />
               <p className="font-display text-lg font-extrabold">That product isn't here</p>
-              <p className="text-sm text-ink-400">It may have sold out or been removed.</p>
+              <p className="text-sm text-ink-400">
+                We couldn't find that product. It may have been removed or isn't available yet.
+              </p>
               <button
                 onClick={() => navigate(`/s/${store.subdomain}`)}
                 className="mt-2 text-sm font-bold text-brand-600 hover:underline"
@@ -1549,6 +1662,31 @@ export default function StoreView() {
 
       {/* CATEGORIES + PRODUCTS */}
       <section id="products" className="mx-auto max-w-6xl px-4 pb-20 pt-8 sm:px-6">
+        <div className="mb-5 max-w-md">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300">
+              <Icon name="search" size={17} />
+            </span>
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search products…"
+              className="pl-10"
+              type="search"
+              enterKeyHint="search"
+            />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput("")}
+                aria-label="Clear search"
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-ink-300 transition-colors hover:bg-cream-100 hover:text-ink-600"
+              >
+                <Icon name="x" size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
         {categories.length > 0 && (
           <div
             className={cls(
@@ -2139,6 +2277,109 @@ export default function StoreView() {
                   type="tel"
                 />
 
+                {deliveryOptions.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-extrabold uppercase tracking-wide text-ink-400">
+                      Delivery or pickup
+                    </p>
+
+                    <div className="grid gap-2">
+                      {deliveryOptions.map((option) => {
+                        const active = deliveryOptionId === option.id;
+                        const base = rawNum(option.baseFee);
+                        return (
+                          <div key={option.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeliveryOptionId(option.id);
+                                setDeliveryZoneId("");
+                                setErr("");
+                              }}
+                              disabled={checkingOut}
+                              className={cls(
+                                "flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
+                                active
+                                  ? "border-brand-500 bg-brand-50 shadow-sm"
+                                  : "border-cream-200 bg-white hover:border-brand-300",
+                                checkingOut && "cursor-not-allowed opacity-70"
+                              )}
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm font-extrabold">
+                                  {option.name}
+                                  <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-ink-400">
+                                    {option.kind === "PICKUP" ? "Pickup" : "Delivery"}
+                                  </span>
+                                </p>
+                                {option.description && (
+                                  <p className="mt-0.5 truncate text-xs text-ink-400">
+                                    {option.description}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="ml-3 shrink-0 text-sm font-extrabold tabular-nums">
+                                {base > 0 ? fm(base, DEFAULT_CURRENCY) : "Free"}
+                              </span>
+                            </button>
+
+                            {active && option.zones.length > 0 && (
+                              <div className="mt-2 grid gap-1.5 rounded-xl border border-cream-200 bg-cream-50 p-2.5">
+                                <p className="px-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-400">
+                                  Delivery area
+                                </p>
+                                {option.zones.map((zone) => {
+                                  const zoneActive = deliveryZoneId === zone.id;
+                                  return (
+                                    <button
+                                      key={zone.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setDeliveryZoneId(zone.id);
+                                        setErr("");
+                                      }}
+                                      disabled={checkingOut}
+                                      className={cls(
+                                        "flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-all",
+                                        zoneActive
+                                          ? "border-brand-400 bg-white font-extrabold shadow-sm"
+                                          : "border-transparent bg-white/70 text-ink-600 hover:border-brand-300",
+                                        checkingOut && "cursor-not-allowed opacity-70"
+                                      )}
+                                    >
+                                      <span>{zone.name}</span>
+                                      <span className="tabular-nums">
+                                        +{fm(rawNum(zone.fee), DEFAULT_CURRENCY)}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {active &&
+                              option.kind === "PICKUP" &&
+                              (option.pickupAddressText ||
+                                option.pickupLocation?.address) && (
+                                <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-cream-200 bg-cream-50 px-3 py-2 text-xs leading-relaxed text-ink-500">
+                                  <Icon
+                                    name="pin"
+                                    size={13}
+                                    className="mt-0.5 shrink-0 text-ink-400"
+                                  />
+                                  <span>
+                                    {option.pickupAddressText ||
+                                      option.pickupLocation?.address}
+                                  </span>
+                                </p>
+                              )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {availablePaymentMethods.length > 0 && (
                   <div>
                     <div className="mb-2 flex items-center justify-between">
@@ -2256,10 +2497,21 @@ export default function StoreView() {
 
                 {err && <p className="text-xs font-bold text-danger-500">{err}</p>}
 
+                {selectedDelivery && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-ink-500">
+                      Delivery{selectedZone ? ` · ${selectedZone.name}` : ""}
+                    </span>
+                    <span className="text-sm font-extrabold tabular-nums">
+                      {deliveryFee > 0 ? fm(deliveryFee, DEFAULT_CURRENCY) : "Free"}
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-ink-500">Total</span>
                   <span className="font-display text-xl font-extrabold tabular-nums">
-                    {fm(subtotal, DEFAULT_CURRENCY)}
+                    {fm(cartTotal, DEFAULT_CURRENCY)}
                   </span>
                 </div>
 
