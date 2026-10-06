@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api } from "../lib/api";
+import { API_BASE, api } from "../lib/api";
 import { cls, fm, rawNum } from "../lib/format";
 import {
   Badge,
@@ -12,6 +12,95 @@ import {
   Thumb,
   toast,
 } from "../components/ui";
+
+/*
+ * Product image URLs may come back as bare backend paths ("/uploads/…").
+ * An <img> resolves those against the storefront's own origin, which 404s —
+ * prefix them with the API host so they actually load.
+ */
+function resolveImg(src?: string | null): string | null {
+  const s = (src || "").trim();
+  if (!s) return null;
+  if (/^\/(?!\/)/.test(s)) return `${API_BASE}${s}`;
+  return s;
+}
+
+/*
+ * Storefront image with an intentional loading shimmer and a designed
+ * fallback tile (the product's initial on an accent wash) — so a missing
+ * or broken photo never renders as an empty box or a broken-image icon.
+ */
+function StoreImage({
+  src,
+  alt,
+  className,
+  imgClassName,
+  accent,
+  label,
+  fallbackClass = "text-5xl",
+}: {
+  src?: string | null;
+  alt?: string;
+  /** Sizing classes for the tile, e.g. "h-40 w-full" or "aspect-square w-full". */
+  className?: string;
+  /** Extra classes for the <img> itself (e.g. hover zoom). */
+  imgClassName?: string;
+  /** Accent colour used to tint the fallback tile. */
+  accent?: string;
+  /** Name used for the fallback tile's initial. */
+  label?: string;
+  /** Font-size class for the fallback initial. */
+  fallbackClass?: string;
+}) {
+  const resolved = resolveImg(src);
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  // Reset bookkeeping when the source changes (gallery switching, variants).
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [resolved]);
+
+  const broken = !resolved || failed;
+  const initial = (label || "").trim().charAt(0).toUpperCase() || "*";
+  const tint = accent || "#b45309";
+
+  return (
+    <div className={cls("relative overflow-hidden bg-cream-100", className)}>
+      {broken ? (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ background: `linear-gradient(135deg, ${tint}26, ${tint}59)` }}
+        >
+          <span
+            className={cls("select-none font-display font-black leading-none", fallbackClass)}
+            style={{ color: tint, opacity: 0.8 }}
+          >
+            {initial}
+          </span>
+        </div>
+      ) : (
+        <>
+          {!loaded && (
+            <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-cream-100 via-cream-200/70 to-brand-50" />
+          )}
+          <img
+            src={resolved || undefined}
+            alt={alt || ""}
+            loading="lazy"
+            onLoad={() => setLoaded(true)}
+            onError={() => {
+              setFailed(true);
+              setLoaded(false);
+            }}
+            className={cls("absolute inset-0 h-full w-full object-cover", imgClassName)}
+          />
+        </>
+      )}
+    </div>
+  );
+}
 
 interface StorefrontCategory {
   id: string;
@@ -453,10 +542,14 @@ function ProductDetail({
               className="pointer-events-none absolute -inset-10 -z-10 opacity-[0.08] blur-2xl"
               style={{ background: accent }}
             />
-            <Thumb
+            <StoreImage
               src={activeImg}
               alt={product.name}
-              className="aspect-square w-full rounded-none transition-transform duration-700 group-hover:scale-[1.03]"
+              label={product.name}
+              accent={accent}
+              className="aspect-square w-full"
+              imgClassName="transition-transform duration-700 group-hover:scale-[1.03]"
+              fallbackClass="text-6xl"
             />
           </div>
           {images.length > 1 && (
@@ -473,7 +566,7 @@ function ProductDetail({
                   )}
                   style={activeImg === img ? { borderColor: accent } : undefined}
                 >
-                  <Thumb src={img} alt="" className="h-full w-full rounded-none" />
+                  <StoreImage src={img} alt="" label={product.name} accent={accent} className="h-full w-full" fallbackClass="text-base" />
                 </button>
               ))}
             </div>
@@ -1286,6 +1379,7 @@ export default function StoreView() {
   const heroImg = heroProducts[0]?.coverImageUrl || heroProducts[0]?.images?.[0] || "";
   const heroProd = heroImg ? heroProducts[0] : undefined;
   const heroPrice = heroProd ? rawNum(heroProd.discountPrice ?? heroProd.price) : null;
+  const productsOnSale = products.filter((p) => p.discountPrice != null).length;
   const heroUnit = heroProd?.unit?.name || "";
 
   return (
@@ -1317,8 +1411,13 @@ export default function StoreView() {
         .sf-shine:hover::after { animation: storefrontShine 1.1s ease; }
         .sf-float { animation: storefrontFloat 4.5s ease-in-out infinite; }
         .sf-drift { animation: storefrontDrift 14s ease-in-out infinite; }
+        @keyframes storefrontMarquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+        .sf-marquee { animation: storefrontMarquee 22s linear infinite; }
         @media (prefers-reduced-motion: reduce) {
-          .sf-shine::after, .sf-float, .sf-drift { animation: none !important; }
+          .sf-shine::after, .sf-float, .sf-drift, .sf-marquee { animation: none !important; }
         }
       `}</style>
 
@@ -1344,7 +1443,7 @@ export default function StoreView() {
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4 sm:px-6">
           {settings.logoUrl ? (
             <img
-              src={settings.logoUrl}
+              src={resolveImg(settings.logoUrl) || undefined}
               alt={store.name}
               className={cls("h-10 w-10 object-cover ring-1 ring-black/5", t.logoBoxRadius)}
             />
@@ -1585,10 +1684,13 @@ export default function StoreView() {
               />
               {heroImg ? (
                 <>
-                  <Thumb
+                  <StoreImage
                     src={heroImg}
                     alt={store.name}
-                    className={cls("aspect-[4/3] w-full object-cover", t.heroImgRadius)}
+                    label={store.name}
+                    accent={accent}
+                    className={cls("aspect-[4/3] w-full", t.heroImgRadius)}
+                    fallbackClass="text-7xl"
                   />
                   {heroPrice != null && (
                     <span
@@ -1615,11 +1717,23 @@ export default function StoreView() {
                   )}
                 </>
               ) : (
+                /* No product photos yet — show a deliberate, on-theme tile. */
                 <div
-                  className="flex aspect-[4/3] w-full items-center justify-center"
-                  style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)` }}
+                  className={cls(
+                    "flex aspect-[4/3] w-full items-center justify-center",
+                    tpl === "modern" && "bg-ink-800"
+                  )}
+                  style={
+                    tpl === "modern"
+                      ? undefined
+                      : { background: `linear-gradient(135deg, ${accent}, ${accent}CC)` }
+                  }
                 >
-                  <Icon name="store" size={56} className="text-white" />
+                  <Icon
+                    name="store"
+                    size={56}
+                    className={cls(tpl === "modern" ? "text-white/35" : "text-white")}
+                  />
                 </div>
               )}
             </div>
@@ -1628,7 +1742,6 @@ export default function StoreView() {
       </section>
 
       {/* CAMPAIGN */}
-     {/* CAMPAIGN */}
 {campaignLive && (
   <section className="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
     <div
@@ -1679,9 +1792,160 @@ export default function StoreView() {
   </section>
 )}
 
+      {/* TEMPLATE EXTRAS — each theme adds its own landing-page furniture */}
+      {tpl === "bold" && (
+        /* Full-bleed marquee ticker, streetwear-sale style */
+        <div className="overflow-hidden border-y-2 border-ink-900 bg-ink-900 py-2.5 text-white">
+          <div className="sf-marquee flex w-max items-center gap-8 whitespace-nowrap text-[11px] font-black uppercase tracking-[0.2em]">
+            {[0, 1].map((dup) => (
+              <div key={dup} className="flex items-center gap-8">
+                {[
+                  "Fresh stock daily",
+                  "Fast delivery",
+                  "Secure checkout",
+                  "Best prices in town",
+                  "Pay your way",
+                ].map((x) => (
+                  <span key={x} className="inline-flex items-center gap-8">
+                    {x}
+                    <span
+                      className="inline-block h-1.5 w-1.5 rotate-45"
+                      style={{ background: accent }}
+                    />
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tpl === "bold" && (
+        /* Deal tiles built from live catalogue data */
+        <section className="mx-auto max-w-6xl px-4 pt-10 sm:px-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <button
+              onClick={scrollToProducts}
+              className="sf-shine group border-2 border-ink-900 bg-ink-900 px-6 py-7 text-left text-white shadow-[6px_6px_0_0_#111827] transition-transform hover:-translate-y-1 active:scale-[.99]"
+            >
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-white/60">
+                Limited offer
+              </p>
+              <p className="mt-2 font-display text-2xl font-black uppercase tracking-tight">
+                Hot deals{productsOnSale > 0 ? ` — ${productsOnSale} marked down` : ""}
+              </p>
+              <span className="mt-4 inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide">
+                Grab them
+                <Icon
+                  name="arrowRight"
+                  size={14}
+                  className="transition-transform group-hover:translate-x-1"
+                />
+              </span>
+            </button>
+            <button
+              onClick={scrollToProducts}
+              className="sf-shine group border-2 border-ink-900 bg-white px-6 py-7 text-left shadow-[6px_6px_0_0_#111827] transition-transform hover:-translate-y-1 active:scale-[.99]"
+            >
+              <p
+                className="text-[11px] font-black uppercase tracking-[0.2em]"
+                style={{ color: accent }}
+              >
+                Just landed
+              </p>
+              <p className="mt-2 font-display text-2xl font-black uppercase tracking-tight text-ink-900">
+                {(products.length || productsTotal || 0).toLocaleString()} on the shelf
+              </p>
+              <span className="mt-4 inline-flex items-center gap-2 text-xs font-black uppercase tracking-wide text-ink-900">
+                Browse all
+                <Icon
+                  name="arrowRight"
+                  size={14}
+                  className="transition-transform group-hover:translate-x-1"
+                />
+              </span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {tpl === "modern" && categories.length > 0 && (
+        /* Editorial "collections" band — category tiles jump straight into the grid */
+        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6">
+          <div className="flex items-end justify-between border-b border-ink-900/10 pb-3">
+            <h2 className="text-sm font-extrabold uppercase tracking-[0.22em] text-ink-900">
+              Collections
+            </h2>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+              {categories.length} departments
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-px bg-ink-900/10 sm:grid-cols-4">
+            {categories.slice(0, 4).map((c, i) => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  setCatF(c.name);
+                  scrollToProducts();
+                }}
+                className="group bg-white px-5 py-8 text-left transition-colors duration-200 hover:bg-ink-900"
+              >
+                <span className="font-display text-[11px] font-extrabold tabular-nums text-ink-300 group-hover:text-white/50">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <p className="mt-2 truncate font-display text-base font-extrabold uppercase tracking-wide text-ink-900 group-hover:text-white">
+                  {c.name}
+                </p>
+                <span className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-ink-400 group-hover:text-white">
+                  Shop
+                  <Icon
+                    name="arrowRight"
+                    size={12}
+                    className="transition-transform group-hover:translate-x-0.5"
+                  />
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* CATEGORIES + PRODUCTS */}
-      <section id="products" className="mx-auto max-w-6xl px-4 pb-20 pt-8 sm:px-6">
+      <section
+        id="products"
+        className={cls(
+          "mx-auto max-w-6xl px-4 pb-20 sm:px-6",
+          tpl === "classic" ? "pt-8" : "pt-14"
+        )}
+      >
+        {/* Section title — each template announces the shelf differently */}
+        {tpl === "classic" ? (
+          <div className="mb-5">
+            <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink-900">
+              Browse the shelf
+            </h2>
+            <p className="mt-0.5 text-sm text-ink-400">Everything in stock right now.</p>
+          </div>
+        ) : tpl === "modern" ? (
+          <div className="mb-6 flex items-end justify-between border-b border-ink-900/10 pb-3">
+            <h2 className="text-sm font-extrabold uppercase tracking-[0.22em] text-ink-900">
+              The collection
+            </h2>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ink-400">
+              {(productsTotal || products.length).toLocaleString()} pieces
+            </span>
+          </div>
+        ) : (
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+            <h2 className="font-display text-3xl font-black uppercase leading-none tracking-tight text-ink-900 sm:text-4xl">
+              The goods<span style={{ color: accent }}>.</span>
+            </h2>
+            <span className="inline-flex items-center gap-1.5 border-2 border-ink-900 px-2.5 py-1 text-[11px] font-black uppercase tracking-wide text-ink-900 shadow-[3px_3px_0_0_#111827]">
+              {(productsTotal || products.length).toLocaleString()} in stock
+            </span>
+          </div>
+        )}
+
         <div className="mb-5 max-w-md">
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-300">
@@ -1730,16 +1994,59 @@ export default function StoreView() {
         )}
 
         {productsLoading ? (
-          <div className="card flex flex-col items-center gap-3 px-6 py-16 text-center">
-            <Spinner size={24} className="text-ink-400" />
-            <p className="text-sm font-bold text-ink-500">Loading products…</p>
+          /* Loading state — a shimmering grid so "skeleton" reads as intentional */
+          <div className={cls("grid", t.gridCols, t.gridGap)}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className={cls("overflow-hidden bg-white", t.cardRadius, t.cardBorder)}
+              >
+                <div
+                  className={cls(
+                    "animate-pulse bg-cream-200",
+                    tpl === "bold" ? "h-56 sm:h-64" : "h-40",
+                    t.thumbRadius
+                  )}
+                  style={tpl === "bold" ? { background: `${accent}1f` } : undefined}
+                />
+                <div className={cls(tpl === "bold" ? "p-4" : "p-3.5")}>
+                  <div className="h-3 w-3/4 animate-pulse bg-cream-200" />
+                  <div className="mt-2 h-3 w-1/3 animate-pulse bg-cream-200" />
+                  <div className={cls("mt-3 h-7 animate-pulse bg-cream-200", t.ctaRadius)} />
+                </div>
+              </div>
+            ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="card flex flex-col items-center gap-3 px-6 py-16 text-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-400">
+          /* Empty state — styled per template instead of a generic card */
+          <div
+            className={cls(
+              "flex flex-col items-center gap-3 px-6 py-16 text-center",
+              tpl === "classic"
+                ? "card"
+                : tpl === "modern"
+                ? "rounded-none border border-ink-100 bg-white"
+                : "border-2 border-ink-900 bg-white shadow-[8px_8px_0_0_#111827]"
+            )}
+          >
+            <span
+              className={cls(
+                "flex h-14 w-14 items-center justify-center",
+                tpl === "classic"
+                  ? "rounded-full bg-brand-50 text-brand-400"
+                  : "rounded-none bg-cream-100 text-ink-400"
+              )}
+            >
               <Icon name="box" size={26} />
             </span>
-            <p className="font-display text-lg font-extrabold">The shelf is empty right now</p>
+            <p
+              className={cls(
+                "font-display text-lg font-extrabold",
+                tpl !== "classic" && "uppercase tracking-wide"
+              )}
+            >
+              The shelf is empty right now
+            </p>
             <p className="text-sm text-ink-400">
               {productsMessage || "Check back soon — fresh stock is on its way."}
             </p>
@@ -1784,14 +2091,18 @@ export default function StoreView() {
                       to={`/s/${store.subdomain}/p/${p.id}`}
                       className="relative block overflow-hidden"
                     >
-                      <Thumb
+                      <StoreImage
                         src={p.coverImageUrl || p.images?.[0]}
                         alt={p.name}
+                        label={p.name}
+                        accent={accent}
                         className={cls(
-                          "w-full transition-transform duration-500 group-hover:scale-[1.07]",
+                          "w-full",
                           tpl === "bold" ? "h-56 sm:h-64" : "h-40",
                           t.thumbRadius
                         )}
+                        imgClassName="transition-transform duration-500 group-hover:scale-[1.07]"
+                        fallbackClass="text-4xl"
                       />
 
                       {p.discountPrice != null && (
@@ -2233,7 +2544,7 @@ export default function StoreView() {
                     key={l.key}
                     className="flex items-center gap-3 border-b border-cream-100 px-5 py-3.5 transition-colors hover:bg-cream-50/60"
                   >
-                    <Thumb src={l.image} className="h-12 w-12 rounded-lg ring-1 ring-black/5" />
+                    <Thumb src={resolveImg(l.image)} className="h-12 w-12 rounded-lg ring-1 ring-black/5" />
 
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-bold">{l.name}</p>
