@@ -155,23 +155,26 @@ interface CartLine {
 }
 
 type PaymentMethod = "paystack" | "bank_transfer";
-type TemplateSlug = "classic" | "modern-grid" | "minimal-boutique";
+type TemplateSlug = "classic" | "modern" | "bold";
 
 const DEFAULT_CURRENCY = "NGN";
 
 /*
  * ------------------------------------------------------------
- * Template tokens
+ * Template selection
  * ------------------------------------------------------------
  *
- * Each of the three seeded templates (classic / modern-grid /
- * minimal-boutique) gets its own structural + type treatment,
- * not just a recolor. Unknown/missing slugs fall back to
- * "classic" so old stores and template-less onboarding still
- * render correctly.
+ * The backend stores the storefront template as an UPPERCASE enum
+ * (CLASSIC / MODERN / BOLD — exactly what the dashboard's template
+ * dropdown writes), so matching has to be case-insensitive and
+ * keyword-based, not an exact slug comparison. Legacy seeded slugs
+ * ("modern-grid", "minimal-boutique") are aliased too. Anything
+ * unknown falls back to "classic" so old stores still render.
  */
 function normalizeTemplate(slug?: string | null): TemplateSlug {
-  if (slug === "modern-grid" || slug === "minimal-boutique") return slug;
+  const s = (slug ?? "").trim().toLowerCase().replace(/[_\s]+/g, "-");
+  if (s.includes("modern")) return "modern";
+  if (s.includes("bold") || s.includes("boutique")) return "bold";
   return "classic";
 }
 
@@ -233,11 +236,11 @@ const TEMPLATE_TOKENS: Record<
     footerBorder: "border-cream-200",
     productNameClass: "text-sm font-bold",
   },
-  "modern-grid": {
+  "modern": {
     pageBg: "bg-white",
     headerBg: "bg-ink-900",
     headerText: "text-white",
-    headerBorder: "border-ink-900",
+    headerBorder: "border-ink-800",
     logoBoxRadius: "rounded-none",
     cardRadius: "rounded-none",
     cardBorder: "border border-ink-100",
@@ -252,54 +255,56 @@ const TEMPLATE_TOKENS: Record<
           ? "border-ink-900 bg-ink-900 text-white"
           : "border-ink-200 text-ink-500 hover:border-ink-900"
       ),
-    gridCols: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
-    gridGap: "gap-2.5",
+    gridCols: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4",
+    gridGap: "gap-3",
     heroAlign: "text-left",
     heroEyebrowCase: "uppercase tracking-[0.25em]",
     heroTitleClass:
-      "font-display text-5xl font-extrabold leading-[0.95] tracking-tight sm:text-7xl",
+      "font-display text-5xl font-black uppercase leading-[0.95] tracking-tight sm:text-7xl",
     heroWrap: "max-w-3xl",
-    heroFrame: "rounded-none border border-ink-100 bg-white p-1.5 shadow-lg",
+    heroFrame: "rounded-none border border-white/15 bg-white/5 p-1.5 backdrop-blur",
     heroImgRadius: "rounded-sm",
-    ctaHover: "hover:bg-ink-800",
+    ctaHover: "hover:brightness-110",
     footerBg: "bg-ink-900",
     footerText: "text-white",
     footerBorder: "border-ink-800",
     productNameClass: "text-xs font-extrabold uppercase tracking-wide",
   },
-  "minimal-boutique": {
+  "bold": {
     pageBg: "bg-white",
     headerBg: "bg-white",
     headerText: "text-ink-900",
-    headerBorder: "border-ink-100",
-    logoBoxRadius: "rounded-full",
+    headerBorder: "border-b-2 border-ink-900",
+    logoBoxRadius: "rounded-none",
     cardRadius: "rounded-none",
-    cardBorder: "",
-    cardShadow: "",
-    thumbRadius: "",
+    cardBorder: "border-2 border-ink-900",
+    cardShadow:
+      "shadow-[5px_5px_0_0_#111827] hover:shadow-[8px_8px_0_0_#111827] hover:-translate-y-0.5",
+    thumbRadius: "rounded-none",
     ctaRadius: "rounded-none",
-    ctaCase: "",
+    ctaCase: "uppercase tracking-wide",
     chipStyle: (active) =>
       cls(
-        "border-b-2 px-1 pb-1 text-xs font-semibold uppercase tracking-[0.14em] transition-colors",
+        "border-2 px-3.5 py-1.5 text-xs font-black uppercase tracking-wide transition-all",
         active
-          ? "border-ink-900 text-ink-900"
-          : "border-transparent text-ink-300 hover:text-ink-600"
+          ? "border-ink-900 bg-ink-900 text-white shadow-[3px_3px_0_0_#111827]"
+          : "border-ink-200 bg-white text-ink-600 shadow-[3px_3px_0_0_rgba(17,24,39,0.15)] hover:border-ink-900"
       ),
     gridCols: "grid-cols-2 lg:grid-cols-3",
-    gridGap: "gap-x-8 gap-y-12",
-    heroAlign: "text-center",
-    heroEyebrowCase: "uppercase tracking-[0.3em]",
-    heroTitleClass: "font-serif text-5xl italic leading-tight tracking-tight sm:text-6xl",
-    heroWrap: "mx-auto max-w-xl",
+    gridGap: "gap-5 sm:gap-6",
+    heroAlign: "text-left",
+    heroEyebrowCase: "uppercase tracking-[0.2em]",
+    heroTitleClass:
+      "font-display text-5xl font-black uppercase leading-[0.95] tracking-tight sm:text-6xl lg:text-7xl",
+    heroWrap: "max-w-2xl",
     heroFrame:
-      "rounded-none border border-ink-100 bg-white p-3 shadow-[0_24px_60px_-24px_rgba(0,0,0,0.25)]",
-    heroImgRadius: "rounded-[2px]",
-    ctaHover: "hover:opacity-90",
-    footerBg: "bg-white",
-    footerText: "text-ink-900",
-    footerBorder: "border-ink-100",
-    productNameClass: "font-serif text-[15px]",
+      "rounded-none border-2 border-white bg-white p-2 shadow-[12px_12px_0_0_#111827]",
+    heroImgRadius: "rounded-none",
+    ctaHover: "hover:brightness-95",
+    footerBg: "bg-ink-900",
+    footerText: "text-white",
+    footerBorder: "border-ink-800",
+    productNameClass: "text-sm font-black uppercase tracking-wide",
   },
 };
 
@@ -1343,8 +1348,6 @@ export default function StoreView() {
               alt={store.name}
               className={cls("h-10 w-10 object-cover ring-1 ring-black/5", t.logoBoxRadius)}
             />
-          ) : tpl === "minimal-boutique" ? (
-            <span className="font-serif text-xl italic tracking-tight">{store.name}</span>
           ) : (
             <span
               className={cls(
@@ -1359,45 +1362,35 @@ export default function StoreView() {
             </span>
           )}
 
-          {tpl !== "minimal-boutique" && (
-            <div className="leading-tight">
-              <p
-                className={cls(
-                  "font-display text-lg font-extrabold",
-                  tpl === "modern-grid" && "uppercase tracking-[0.08em]"
-                )}
-              >
-                {store.name}
-              </p>
-            </div>
-          )}
-
-          {tpl === "minimal-boutique" ? (
-            <button
-              onClick={() => setCartOpen(true)}
-              className="relative ml-auto flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] transition-opacity hover:opacity-70"
-            >
-              <Icon name="cart" size={16} />
-              Cart{count > 0 ? ` (${count})` : ""}
-            </button>
-          ) : (
-            <button
-              onClick={() => setCartOpen(true)}
+          <div className="leading-tight">
+            <p
               className={cls(
-                "sf-shine relative ml-auto flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition-transform active:scale-[.97]",
-                t.ctaRadius
+                "font-display text-lg font-extrabold",
+                tpl === "modern"
+                  ? "uppercase tracking-[0.08em]"
+                  : tpl === "bold" && "font-black uppercase tracking-tight"
               )}
-              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
             >
-              <Icon name="cart" size={17} />
-              Cart
-              {count > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-900 px-1 text-[10px] font-extrabold text-white shadow-sm ring-2 ring-white">
-                  {count}
-                </span>
-              )}
-            </button>
-          )}
+              {store.name}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setCartOpen(true)}
+            className={cls(
+              "sf-shine relative ml-auto flex items-center gap-2 px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition-transform active:scale-[.97]",
+              t.ctaRadius
+            )}
+            style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
+          >
+            <Icon name="cart" size={17} />
+            Cart
+            {count > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink-900 px-1 text-[10px] font-extrabold text-white shadow-sm ring-2 ring-white">
+                {count}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
@@ -1442,24 +1435,25 @@ export default function StoreView() {
       <section
         className={cls(
           "relative overflow-hidden",
-          tpl === "minimal-boutique" ? "pt-14 pb-10" : "pt-12 pb-10"
+          tpl === "modern" && "bg-ink-900",
+          tpl === "classic" ? "pt-12 pb-10" : "pt-14 pb-14"
         )}
+        style={
+          tpl === "bold"
+            ? { background: `linear-gradient(120deg, ${accent}, ${accent}CC)` }
+            : undefined
+        }
       >
         {/* soft page wash behind the hero */}
-        <div
-          className="sf-drift pointer-events-none absolute -right-24 -top-24 -z-10 h-[26rem] w-[26rem] rounded-full opacity-[0.14] blur-3xl"
-          style={{ background: accent }}
-        />
-        <div
-          className={cls(
-            "pointer-events-none absolute inset-0 -z-10",
-            tpl === "classic"
-              ? "bg-gradient-to-b from-brand-50/60 via-transparent to-transparent"
-              : tpl === "modern-grid"
-              ? "bg-gradient-to-b from-ink-900/[0.04] via-transparent to-transparent"
-              : ""
-          )}
-        />
+        {tpl !== "bold" && (
+          <div
+            className="sf-drift pointer-events-none absolute -right-24 -top-24 -z-10 h-[26rem] w-[26rem] rounded-full opacity-[0.14] blur-3xl"
+            style={{ background: accent }}
+          />
+        )}
+        {tpl === "classic" && (
+          <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-brand-50/60 via-transparent to-transparent" />
+        )}
 
         <div
           className={cls(
@@ -1467,78 +1461,74 @@ export default function StoreView() {
           )}
         >
           {/* LEFT — copy */}
-          <div
-            className={cls(
-              "anim-rise relative",
-              tpl === "minimal-boutique" ? "mx-auto text-center" : t.heroAlign
-            )}
-          >
-            {tpl !== "minimal-boutique" && settings.tagline && (
+          <div className={cls("anim-rise relative", t.heroAlign)}>
+            {settings.tagline && (
               <p
                 className={cls(
                   "inline-flex items-center gap-1.5 text-xs font-extrabold",
                   t.heroEyebrowCase
                 )}
-                style={{ color: accent }}
+                style={{ color: tpl === "classic" ? accent : "rgba(255,255,255,0.85)" }}
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: tpl === "classic" ? accent : "rgba(255,255,255,0.85)" }}
+                />
                 {settings.tagline}
               </p>
             )}
 
-            <h1 className={cls("mt-2", t.heroTitleClass)}>
+            <h1 className={cls("mt-2", t.heroTitleClass, tpl !== "classic" && "text-white")}>
               {settings.heroTitle || `Shop ${store.name}`}
             </h1>
 
-            {tpl === "minimal-boutique" && settings.tagline && (
-              <p className={cls("mt-4 text-xs font-extrabold", t.heroEyebrowCase)} style={{ color: accent }}>
-                {settings.tagline}
-              </p>
-            )}
-
-            {tpl === "minimal-boutique" && (
-              <div className="mx-auto mt-4 h-px w-12" style={{ background: accent }} />
-            )}
-
             <p
               className={cls(
-                "mt-3 leading-relaxed text-ink-500",
-                tpl === "minimal-boutique" ? "text-sm" : "text-[15px]"
+                "mt-3 leading-relaxed text-[15px]",
+                tpl === "classic" ? "text-ink-500" : "text-white/75"
               )}
             >
               {settings.heroSubtitle || "Browse the shelf, fill your basket, pay your way."}
             </p>
 
             {/* CTA row */}
-            <div
-              className={cls(
-                "mt-7 flex flex-wrap items-center gap-3",
-                tpl === "minimal-boutique" && "justify-center"
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              {tpl === "bold" ? (
+                <button
+                  onClick={scrollToProducts}
+                  className={cls(
+                    "sf-shine inline-flex items-center gap-2 border-2 border-ink-900 bg-white px-6 py-3.5 text-sm font-black uppercase tracking-wide text-ink-900 shadow-[6px_6px_0_0_#111827] transition-all active:scale-[.99]",
+                    t.ctaRadius
+                  )}
+                >
+                  Shop now
+                  <Icon name="arrowRight" size={16} />
+                </button>
+              ) : (
+                <button
+                  onClick={scrollToProducts}
+                  className={cls(
+                    "sf-shine inline-flex items-center gap-2 px-6 py-3.5 text-sm font-extrabold text-white shadow-lg transition-all active:scale-[.99]",
+                    t.ctaRadius,
+                    t.ctaCase,
+                    t.ctaHover
+                  )}
+                  style={{
+                    background: `linear-gradient(135deg, ${accent}, ${accent}DD)`,
+                    boxShadow: `0 14px 32px -10px ${accent}`,
+                  }}
+                >
+                  Shop now
+                  <Icon name="arrowRight" size={16} />
+                </button>
               )}
-            >
               <button
                 onClick={scrollToProducts}
                 className={cls(
-                  "sf-shine inline-flex items-center gap-2 px-6 py-3.5 text-sm font-extrabold text-white shadow-lg transition-all active:scale-[.99]",
-                  t.ctaRadius,
-                  t.ctaCase,
-                  t.ctaHover
-                )}
-                style={{
-                  background: `linear-gradient(135deg, ${accent}, ${accent}DD)`,
-                  boxShadow: `0 14px 32px -10px ${accent}`,
-                }}
-              >
-                Shop now
-                <Icon name="arrowRight" size={16} />
-              </button>
-              <button
-                onClick={scrollToProducts}
-                className={cls(
-                  "inline-flex items-center gap-2 rounded-xl border px-6 py-3.5 text-sm font-extrabold backdrop-blur transition-colors",
-                  tpl === "modern-grid"
-                    ? "border-ink-200 text-ink-700 hover:border-ink-900"
-                    : "border-cream-300 bg-white/60 text-ink-700 hover:border-ink-900"
+                  "inline-flex items-center gap-2 border px-6 py-3.5 text-sm font-extrabold backdrop-blur transition-colors",
+                  tpl === "classic"
+                    ? "rounded-xl border-cream-300 bg-white/60 text-ink-700 hover:border-ink-900"
+                    : "border-white/40 text-white hover:bg-white/10"
                 )}
               >
                 Browse categories
@@ -1548,21 +1538,33 @@ export default function StoreView() {
             {/* Trust row */}
             <div
               className={cls(
-                "mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] font-semibold text-ink-500",
-                tpl === "minimal-boutique" && "justify-center"
+                "mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] font-semibold",
+                tpl === "classic" ? "text-ink-500" : "text-white/75"
               )}
             >
               <span className="inline-flex items-center gap-1.5">
-                <Icon name="shield" size={14} className="text-leaf-600" />
+                <Icon
+                  name="shield"
+                  size={14}
+                  className={tpl === "classic" ? "text-leaf-600" : "text-white/70"}
+                />
                 Secure checkout
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Icon name="wallet" size={14} className="text-leaf-600" />
+                <Icon
+                  name="wallet"
+                  size={14}
+                  className={tpl === "classic" ? "text-leaf-600" : "text-white/70"}
+                />
                 Pay your way
               </span>
               {productsTotal > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <Icon name="box" size={14} className="text-leaf-600" />
+                  <Icon
+                    name="box"
+                    size={14}
+                    className={tpl === "classic" ? "text-leaf-600" : "text-white/70"}
+                  />
                   {productsTotal} on the shelf
                 </span>
               )}
@@ -1573,7 +1575,7 @@ export default function StoreView() {
           <div
             className={cls(
               "anim-rise",
-              tpl === "minimal-boutique" ? "order-first lg:order-none" : ""
+              tpl === "bold" ? "order-first lg:order-none" : ""
             )}
           >
             <div className={cls("sf-float relative mx-auto max-w-md", t.heroFrame)}>
@@ -1592,7 +1594,7 @@ export default function StoreView() {
                     <span
                       className={cls(
                         "absolute -bottom-4 left-4 inline-flex items-baseline gap-1 rounded-xl bg-white px-3.5 py-2 shadow-xl ring-1 ring-black/5",
-                        tpl === "modern-grid" && "rounded-none"
+                        tpl !== "classic" && "rounded-none"
                       )}
                     >
                       <span className="text-sm font-extrabold tabular-nums" style={{ color: accent }}>
@@ -1632,12 +1634,17 @@ export default function StoreView() {
     <div
       className={cls(
         "sf-shine anim-rise relative overflow-hidden px-6 py-8 text-white shadow-xl",
-        tpl === "classic" ? "rounded-2xl" : tpl === "modern-grid" ? "rounded-none" : "rounded-2xl"
+        tpl === "modern" ? "rounded-none bg-ink-900" : "rounded-2xl",
+        tpl === "modern" && "border border-white/10"
       )}
-      style={{
-        background: `linear-gradient(120deg, ${accent}, ${accent}CC 60%, ${accent})`,
-        boxShadow: `0 24px 50px -20px ${accent}`,
-      }}
+      style={
+        tpl === "modern"
+          ? undefined
+          : {
+              background: `linear-gradient(120deg, ${accent}, ${accent}CC 60%, ${accent})`,
+              boxShadow: `0 24px 50px -20px ${accent}`,
+            }
+      }
     >
       <div className="pointer-events-none absolute -right-8 -top-10 h-52 w-52 rounded-full bg-white/10" />
       <div className="pointer-events-none absolute -bottom-16 -left-10 h-40 w-40 rounded-full bg-black/10" />
@@ -1658,7 +1665,7 @@ export default function StoreView() {
               onClick={scrollToProducts}
               className={cls(
                 "inline-flex items-center gap-2 bg-white px-5 py-2.5 text-sm font-extrabold shadow-lg transition-transform hover:scale-105 active:scale-[.98]",
-                tpl === "modern-grid" ? "rounded-none" : "rounded-xl"
+                tpl === "modern" ? "rounded-none" : "rounded-xl"
               )}
               style={{ color: accent }}
             >
@@ -1704,7 +1711,7 @@ export default function StoreView() {
           <div
             className={cls(
               "mb-6 flex flex-wrap gap-2",
-              tpl === "minimal-boutique" && "justify-center gap-6"
+              tpl === "bold" && "justify-center gap-6"
             )}
           >
             <button className={t.chipStyle(!catF)} onClick={() => setCatF("")}>
@@ -1749,7 +1756,7 @@ export default function StoreView() {
   key={p.id}
   className={cls(
     "anim-rise group relative overflow-hidden transition-all duration-300",
-    tpl === "minimal-boutique"
+    tpl === "bold"
       ? ""
       : "hover:-translate-y-1.5 hover:shadow-[0_22px_46px_-18px_rgba(0,0,0,0.3)]",
     t.cardRadius,
@@ -1759,11 +1766,17 @@ export default function StoreView() {
   )}
   style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
 >
-  {tpl !== "minimal-boutique" && (
+  {tpl !== "bold" && (
     <span
       className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 origin-left scale-x-0 transition-transform duration-300 group-hover:scale-x-100"
       style={{ background: accent }}
     />
+  )}
+
+  {tpl === "modern" && (
+    <span className="pointer-events-none absolute right-2.5 top-2.5 z-10 font-display text-[11px] font-extrabold tabular-nums text-ink-300">
+      {String(i + 1).padStart(2, "0")}
+    </span>
   )}
 
 
@@ -1776,7 +1789,7 @@ export default function StoreView() {
                         alt={p.name}
                         className={cls(
                           "w-full transition-transform duration-500 group-hover:scale-[1.07]",
-                          tpl === "minimal-boutique" ? "h-56 sm:h-64" : "h-40",
+                          tpl === "bold" ? "h-56 sm:h-64" : "h-40",
                           t.thumbRadius
                         )}
                       />
@@ -1785,7 +1798,7 @@ export default function StoreView() {
                         <span
                           className={cls(
                             "absolute left-2 top-2 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white shadow-sm",
-                            tpl === "modern-grid" ? "rounded-none" : "rounded-full"
+                            tpl === "modern" ? "rounded-none" : "rounded-full"
                           )}
                           style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
                         >
@@ -1800,7 +1813,7 @@ export default function StoreView() {
                       )}
                     </Link>
 
-                    <div className={cls(tpl === "minimal-boutique" ? "pt-3" : "p-3.5")}>
+                    <div className={cls(tpl === "bold" ? "p-4" : "p-3.5")}>
                       <p>
                         <Link
                           to={`/s/${store.subdomain}/p/${p.id}`}
@@ -1817,9 +1830,7 @@ export default function StoreView() {
                         <span
                           className={cls(
                             "tabular-nums",
-                            tpl === "minimal-boutique"
-                              ? "font-serif text-sm"
-                              : "text-sm font-extrabold"
+                            tpl === "bold" ? "text-base font-black" : "text-sm font-extrabold"
                           )}
                         >
                           <span style={{ color: accent }}>
@@ -1840,14 +1851,14 @@ export default function StoreView() {
                         </p>
                       )}
 
-                      {tpl === "minimal-boutique" ? (
+                      {tpl === "bold" ? (
                         <button
                           disabled={!hasVariants && stock === "OUT_OF_STOCK"}
                           onClick={() => (hasVariants ? setVariantPick(p) : add(p))}
-                          className="group/cta mt-2.5 inline-flex items-center gap-1.5 border-b border-ink-900 pb-0.5 text-xs font-semibold uppercase tracking-[0.1em] transition-colors hover:opacity-70 disabled:cursor-not-allowed disabled:opacity-30"
+                          className="group/cta mt-2.5 flex w-full items-center justify-center gap-2 border-2 border-ink-900 bg-white py-2 text-xs font-black uppercase tracking-wide text-ink-900 shadow-[3px_3px_0_0_#111827] transition-all hover:bg-ink-900 hover:text-white active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           Add to cart
-                          <Icon name="arrowRight" size={12} className="transition-transform group-hover/cta:translate-x-0.5" />
+                          <Icon name="cart" size={13} className="transition-transform group-hover/cta:-translate-x-0.5" />
                         </button>
                       ) : (
                         <button
@@ -1903,7 +1914,7 @@ export default function StoreView() {
           <p
             className={cls(
               "text-sm font-extrabold",
-              tpl === "minimal-boutique" && "font-serif italic tracking-tight"
+              tpl !== "classic" && "font-display text-lg font-black uppercase tracking-[0.18em]"
             )}
           >
             {store.name}
@@ -1918,7 +1929,7 @@ export default function StoreView() {
                   rel="noreferrer"
                   className={cls(
                     "hover:opacity-70",
-                    tpl === "modern-grid" ? "text-white/60" : "text-ink-400"
+                    tpl !== "classic" ? "text-white/60" : "text-ink-400"
                   )}
                 >
                   <Icon name="instagram" size={16} />
@@ -1931,7 +1942,7 @@ export default function StoreView() {
                   rel="noreferrer"
                   className={cls(
                     "hover:opacity-70",
-                    tpl === "modern-grid" ? "text-white/60" : "text-ink-400"
+                    tpl !== "classic" ? "text-white/60" : "text-ink-400"
                   )}
                 >
                   <Icon name="facebook" size={16} />
@@ -1944,7 +1955,7 @@ export default function StoreView() {
                   rel="noreferrer"
                   className={cls(
                     "hover:opacity-70",
-                    tpl === "modern-grid" ? "text-white/60" : "text-ink-400"
+                    tpl !== "classic" ? "text-white/60" : "text-ink-400"
                   )}
                 >
                   <Icon name="tiktok" size={16} />
@@ -1958,7 +1969,7 @@ export default function StoreView() {
               to="/"
               className={cls(
                 "flex items-center gap-2 text-xs font-bold hover:opacity-70",
-                tpl === "modern-grid" ? "text-white/60" : "text-ink-400"
+                tpl !== "classic" ? "text-white/60" : "text-ink-400"
               )}
             >
               <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-500 text-white">
@@ -2258,269 +2269,273 @@ export default function StoreView() {
                   </div>
                 ))
               )}
+
+              {cart.length > 0 && !result && (
+                <div className="space-y-3.5 border-t border-cream-200 bg-cream-50 px-5 py-4">
+                  <Input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="Discount code (if you have one)"
+                    className="uppercase"
+                  />
+  
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      value={customer.name}
+                      onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+                      placeholder="Full name"
+                    />
+                    <Input
+                      value={customer.email}
+                      onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+                      placeholder="Email"
+                      type="email"
+                    />
+                  </div>
+  
+                  <Input
+                    value={customer.phone}
+                    onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+                    placeholder="Phone (optional)"
+                    type="tel"
+                  />
+  
+                  {deliveryOptions.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-extrabold uppercase tracking-wide text-ink-400">
+                        Delivery or pickup
+                      </p>
+  
+                      <div className="grid gap-2">
+                        {deliveryOptions.map((option) => {
+                          const active = deliveryOptionId === option.id;
+                          const base = rawNum(option.baseFee);
+                          return (
+                            <div key={option.id}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeliveryOptionId(option.id);
+                                  setErr("");
+                                }}
+                                disabled={checkingOut}
+                                className={cls(
+                                  "flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
+                                  active
+                                    ? "border-brand-500 bg-brand-50 shadow-sm"
+                                    : "border-cream-200 bg-white hover:border-brand-300",
+                                  checkingOut && "cursor-not-allowed opacity-70"
+                                )}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-sm font-extrabold">
+                                    {option.name}
+                                    <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-ink-400">
+                                      {option.kind === "PICKUP" ? "Pickup" : "Delivery"}
+                                    </span>
+                                  </p>
+                                  {option.description && (
+                                    <p className="mt-0.5 truncate text-xs text-ink-400">
+                                      {option.description}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="ml-3 shrink-0 text-sm font-extrabold tabular-nums">
+                                  {base > 0 ? fm(base, DEFAULT_CURRENCY) : "Free"}
+                                </span>
+                              </button>
+  
+                              {active &&
+                                option.kind === "PICKUP" &&
+                                (option.pickupAddressText ||
+                                  option.pickupLocation?.address) && (
+                                  <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-cream-200 bg-cream-50 px-3 py-2 text-xs leading-relaxed text-ink-500">
+                                    <Icon
+                                      name="pin"
+                                      size={13}
+                                      className="mt-0.5 shrink-0 text-ink-400"
+                                    />
+                                    <span>
+                                      {option.pickupAddressText ||
+                                        option.pickupLocation?.address}
+                                    </span>
+                                  </p>
+                                )}
+                            </div>
+                          );
+                        })}
+                      </div>
+  
+                      {selectedDelivery?.kind === "DELIVERY" && (
+                        <div className="mt-2 grid gap-2 rounded-xl border border-cream-200 bg-cream-50 p-3">
+                          <p className="text-[10px] font-extrabold uppercase tracking-wide text-ink-400">
+                            Delivery address
+                          </p>
+                          <Input
+                            value={addr.address}
+                            maxLength={500}
+                            onChange={(e) => setAddr({ ...addr, address: e.target.value })}
+                            placeholder="Street address"
+                            disabled={checkingOut}
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              value={addr.city}
+                              maxLength={120}
+                              onChange={(e) => setAddr({ ...addr, city: e.target.value })}
+                              placeholder="City"
+                              disabled={checkingOut}
+                            />
+                            <Input
+                              value={addr.state}
+                              maxLength={120}
+                              onChange={(e) => setAddr({ ...addr, state: e.target.value })}
+                              placeholder="State"
+                              disabled={checkingOut}
+                            />
+                          </div>
+                          <Input
+                            type="tel"
+                            value={addr.phone}
+                            maxLength={30}
+                            onChange={(e) => setAddr({ ...addr, phone: e.target.value })}
+                            placeholder="Delivery phone (required)"
+                            disabled={checkingOut}
+                          />
+                          <Input
+                            value={addr.instructions}
+                            maxLength={500}
+                            onChange={(e) =>
+                              setAddr({ ...addr, instructions: e.target.value })
+                            }
+                            placeholder="Delivery instructions (optional)"
+                            disabled={checkingOut}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+  
+                  {availablePaymentMethods.length > 0 && (
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-extrabold uppercase tracking-wide text-ink-400">
+                          Payment method
+                        </p>
+                        {paystackAvailable && (
+                          <span className="text-[10px] font-bold text-leaf-600">
+                            Secure checkout
+                          </span>
+                        )}
+                      </div>
+  
+                      <div className="grid gap-2">
+                        {paystackAvailable && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentMethod("paystack");
+                              setErr("");
+                            }}
+                            disabled={checkingOut}
+                            className={cls(
+                              "flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
+                              paymentMethod === "paystack"
+                                ? "border-brand-500 bg-brand-50 shadow-sm"
+                                : "border-cream-200 bg-white hover:border-brand-300",
+                              checkingOut && "cursor-not-allowed opacity-70"
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span
+                                className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm"
+                                style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
+                              >
+                                <Icon name="shield" size={18} />
+                              </span>
+                              <div>
+                                <p className="text-sm font-extrabold">Pay online</p>
+                                <p className="mt-0.5 text-xs text-ink-400">
+                                  Card, bank & other Paystack options
+                                </p>
+                              </div>
+                            </div>
+                            <span
+                              className="flex h-5 w-5 items-center justify-center rounded-full border-2"
+                              style={
+                                paymentMethod === "paystack"
+                                  ? { borderColor: accent, background: accent }
+                                  : undefined
+                              }
+                            >
+                              {paymentMethod === "paystack" && (
+                                <span className="h-2 w-2 rounded-full bg-white" />
+                              )}
+                            </span>
+                          </button>
+                        )}
+  
+                        {bankTransferAvailable && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentMethod("bank_transfer");
+                              setErr("");
+                            }}
+                            disabled={checkingOut}
+                            className={cls(
+                              "flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
+                              paymentMethod === "bank_transfer"
+                                ? "border-brand-500 bg-brand-50 shadow-sm"
+                                : "border-cream-200 bg-white hover:border-brand-300",
+                              checkingOut && "cursor-not-allowed opacity-70"
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cream-100 text-ink-600">
+                                <Icon name="bank" size={18} />
+                              </span>
+                              <div>
+                                <p className="text-sm font-extrabold">Bank transfer</p>
+                                <p className="mt-0.5 text-xs text-ink-400">
+                                  Pay directly to the seller
+                                </p>
+                              </div>
+                            </div>
+                            <span
+                              className="flex h-5 w-5 items-center justify-center rounded-full border-2"
+                              style={
+                                paymentMethod === "bank_transfer"
+                                  ? { borderColor: accent, background: accent }
+                                  : undefined
+                              }
+                            >
+                              {paymentMethod === "bank_transfer" && (
+                                <span className="h-2 w-2 rounded-full bg-white" />
+                              )}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+  
+                  {availablePaymentMethods.length === 0 && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <p className="text-xs font-extrabold text-amber-800">
+                        Payment isn't configured
+                      </p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+                        This store hasn't configured a payment method yet.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {cart.length > 0 && !result && (
               <div className="space-y-3.5 border-t border-cream-200 bg-cream-50 px-5 py-4 shadow-[0_-8px_20px_-16px_rgba(0,0,0,0.2)]">
-                <Input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="Discount code (if you have one)"
-                  className="uppercase"
-                />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    value={customer.name}
-                    onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
-                    placeholder="Full name"
-                  />
-                  <Input
-                    value={customer.email}
-                    onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
-                    placeholder="Email"
-                    type="email"
-                  />
-                </div>
-
-                <Input
-                  value={customer.phone}
-                  onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
-                  placeholder="Phone (optional)"
-                  type="tel"
-                />
-
-                {deliveryOptions.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-xs font-extrabold uppercase tracking-wide text-ink-400">
-                      Delivery or pickup
-                    </p>
-
-                    <div className="grid gap-2">
-                      {deliveryOptions.map((option) => {
-                        const active = deliveryOptionId === option.id;
-                        const base = rawNum(option.baseFee);
-                        return (
-                          <div key={option.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDeliveryOptionId(option.id);
-                                setErr("");
-                              }}
-                              disabled={checkingOut}
-                              className={cls(
-                                "flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
-                                active
-                                  ? "border-brand-500 bg-brand-50 shadow-sm"
-                                  : "border-cream-200 bg-white hover:border-brand-300",
-                                checkingOut && "cursor-not-allowed opacity-70"
-                              )}
-                            >
-                              <div className="min-w-0">
-                                <p className="text-sm font-extrabold">
-                                  {option.name}
-                                  <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-ink-400">
-                                    {option.kind === "PICKUP" ? "Pickup" : "Delivery"}
-                                  </span>
-                                </p>
-                                {option.description && (
-                                  <p className="mt-0.5 truncate text-xs text-ink-400">
-                                    {option.description}
-                                  </p>
-                                )}
-                              </div>
-                              <span className="ml-3 shrink-0 text-sm font-extrabold tabular-nums">
-                                {base > 0 ? fm(base, DEFAULT_CURRENCY) : "Free"}
-                              </span>
-                            </button>
-
-                            {active &&
-                              option.kind === "PICKUP" &&
-                              (option.pickupAddressText ||
-                                option.pickupLocation?.address) && (
-                                <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-cream-200 bg-cream-50 px-3 py-2 text-xs leading-relaxed text-ink-500">
-                                  <Icon
-                                    name="pin"
-                                    size={13}
-                                    className="mt-0.5 shrink-0 text-ink-400"
-                                  />
-                                  <span>
-                                    {option.pickupAddressText ||
-                                      option.pickupLocation?.address}
-                                  </span>
-                                </p>
-                              )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {selectedDelivery?.kind === "DELIVERY" && (
-                      <div className="mt-2 grid gap-2 rounded-xl border border-cream-200 bg-cream-50 p-3">
-                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-ink-400">
-                          Delivery address
-                        </p>
-                        <Input
-                          value={addr.address}
-                          maxLength={500}
-                          onChange={(e) => setAddr({ ...addr, address: e.target.value })}
-                          placeholder="Street address"
-                          disabled={checkingOut}
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            value={addr.city}
-                            maxLength={120}
-                            onChange={(e) => setAddr({ ...addr, city: e.target.value })}
-                            placeholder="City"
-                            disabled={checkingOut}
-                          />
-                          <Input
-                            value={addr.state}
-                            maxLength={120}
-                            onChange={(e) => setAddr({ ...addr, state: e.target.value })}
-                            placeholder="State"
-                            disabled={checkingOut}
-                          />
-                        </div>
-                        <Input
-                          type="tel"
-                          value={addr.phone}
-                          maxLength={30}
-                          onChange={(e) => setAddr({ ...addr, phone: e.target.value })}
-                          placeholder="Delivery phone (required)"
-                          disabled={checkingOut}
-                        />
-                        <Input
-                          value={addr.instructions}
-                          maxLength={500}
-                          onChange={(e) =>
-                            setAddr({ ...addr, instructions: e.target.value })
-                          }
-                          placeholder="Delivery instructions (optional)"
-                          disabled={checkingOut}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {availablePaymentMethods.length > 0 && (
-                  <div>
-                    <div className="mb-2 flex items-center justify-between">
-                      <p className="text-xs font-extrabold uppercase tracking-wide text-ink-400">
-                        Payment method
-                      </p>
-                      {paystackAvailable && (
-                        <span className="text-[10px] font-bold text-leaf-600">
-                          Secure checkout
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid gap-2">
-                      {paystackAvailable && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentMethod("paystack");
-                            setErr("");
-                          }}
-                          disabled={checkingOut}
-                          className={cls(
-                            "flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
-                            paymentMethod === "paystack"
-                              ? "border-brand-500 bg-brand-50 shadow-sm"
-                              : "border-cream-200 bg-white hover:border-brand-300",
-                            checkingOut && "cursor-not-allowed opacity-70"
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-sm"
-                              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}DD)` }}
-                            >
-                              <Icon name="shield" size={18} />
-                            </span>
-                            <div>
-                              <p className="text-sm font-extrabold">Pay online</p>
-                              <p className="mt-0.5 text-xs text-ink-400">
-                                Card, bank & other Paystack options
-                              </p>
-                            </div>
-                          </div>
-                          <span
-                            className="flex h-5 w-5 items-center justify-center rounded-full border-2"
-                            style={
-                              paymentMethod === "paystack"
-                                ? { borderColor: accent, background: accent }
-                                : undefined
-                            }
-                          >
-                            {paymentMethod === "paystack" && (
-                              <span className="h-2 w-2 rounded-full bg-white" />
-                            )}
-                          </span>
-                        </button>
-                      )}
-
-                      {bankTransferAvailable && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentMethod("bank_transfer");
-                            setErr("");
-                          }}
-                          disabled={checkingOut}
-                          className={cls(
-                            "flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
-                            paymentMethod === "bank_transfer"
-                              ? "border-brand-500 bg-brand-50 shadow-sm"
-                              : "border-cream-200 bg-white hover:border-brand-300",
-                            checkingOut && "cursor-not-allowed opacity-70"
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-cream-100 text-ink-600">
-                              <Icon name="bank" size={18} />
-                            </span>
-                            <div>
-                              <p className="text-sm font-extrabold">Bank transfer</p>
-                              <p className="mt-0.5 text-xs text-ink-400">
-                                Pay directly to the seller
-                              </p>
-                            </div>
-                          </div>
-                          <span
-                            className="flex h-5 w-5 items-center justify-center rounded-full border-2"
-                            style={
-                              paymentMethod === "bank_transfer"
-                                ? { borderColor: accent, background: accent }
-                                : undefined
-                            }
-                          >
-                            {paymentMethod === "bank_transfer" && (
-                              <span className="h-2 w-2 rounded-full bg-white" />
-                            )}
-                          </span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {availablePaymentMethods.length === 0 && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <p className="text-xs font-extrabold text-amber-800">
-                      Payment isn't configured
-                    </p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
-                      This store hasn't configured a payment method yet.
-                    </p>
-                  </div>
-                )}
-
                 {err && <p className="text-xs font-bold text-danger-500">{err}</p>}
 
                 {selectedDelivery && (

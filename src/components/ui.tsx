@@ -748,15 +748,20 @@ export function StatCard({
     muted: "bg-cream-100 text-ink-400",
   };
   return (
-    <div className="card anim-rise p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-ink-400">{label}</p>
-        <span className={cls("flex h-8 w-8 items-center justify-center rounded-lg", bg[tone])}>
+    <div className="card anim-rise min-w-0 overflow-hidden p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-[11px] font-bold uppercase tracking-wider text-ink-400">{label}</p>
+        <span className={cls("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", bg[tone])}>
           <Icon name={icon} size={16} />
         </span>
       </div>
-      <p className="mt-1.5 font-display text-2xl font-extrabold tabular-nums tracking-tight">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-ink-400">{sub}</p>}
+      <p
+        className="mt-1.5 truncate font-display text-2xl font-extrabold tabular-nums tracking-tight"
+        title={typeof value === "string" ? value : undefined}
+      >
+        {value}
+      </p>
+      {sub && <p className="mt-0.5 truncate text-xs text-ink-400">{sub}</p>}
     </div>
   );
 }
@@ -940,17 +945,21 @@ export function Money({
   currency = "NGN",
   className,
   strong,
+  compact,
 }: {
   v: any;
   currency?: string;
   className?: string;
   strong?: boolean;
+  compact?: boolean;
 }) {
+  const full = fm(v, currency);
   return (
     <span
+      title={compact ? full : undefined}
       className={cls("tabular-nums", strong && "font-bold text-ink-900", className)}
     >
-      {fm(v, currency)}
+      {compact ? fm(v, currency, { compact: true }) : full}
     </span>
   );
 }

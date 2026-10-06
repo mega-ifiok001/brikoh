@@ -243,7 +243,7 @@ const monthLabel = from.toLocaleDateString("en-GB", {
       <div className="mb-5 grid gap-4 sm:grid-cols-3">
         <StatCard
           label={`Spent in ${monthLabel.split(" ")[0]}`}
-          value={<Money v={total} currency={currency} />}
+          value={<Money v={total} currency={currency} compact />}
           icon="banknote"
           tone="brand"
           sub={`${items.length} expense${items.length === 1 ? "" : "s"}`}

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getAccess } from "../lib/access";
 import { api } from "../lib/api";
-import { ago, apiErrorMessage, asList, pick, rawNum, titleCase } from "../lib/format";
+import { ago, apiErrorMessage, asList, fm, pick, rawNum, titleCase } from "../lib/format";
 import {
   Badge,
   Button,
@@ -174,10 +174,16 @@ export default function Overview() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="Revenue (30 days)"
-          value={canViewProfit ? <Money v={kpis.revenue} currency={currency} /> : "Hidden"}
+          value={canViewProfit ? <Money v={kpis.revenue} currency={currency} compact /> : "Hidden"}
           icon="banknote"
           tone={canViewProfit ? "green" : "neutral"}
-          sub={canViewProfit ? `Avg order ${kpis.avgOrderValue ? `${currency} ${kpis.avgOrderValue}` : "—"}` : "Ask an owner for access"}
+          sub={
+            canViewProfit
+              ? kpis.avgOrderValue
+                ? `Avg order ${fm(kpis.avgOrderValue, currency, { compact: true })}`
+                : "Avg order —"
+              : "Ask an owner for access"
+          }
         />
         <StatCard label="Orders (30 days)" value={kpis.orders ?? "—"} icon="receipt" tone="brand" sub={`${kpis.customers ?? 0} customers total`} />
         <StatCard
@@ -189,14 +195,14 @@ export default function Overview() {
         />
         <StatCard
           label="Credit owing"
-          value={<Money v={quickStats.creditOwing ?? 0} currency={currency} />}
+          value={<Money v={quickStats.creditOwing ?? 0} currency={currency} compact />}
           icon="clock"
           tone={rawNum(quickStats.creditOwing) > 0 ? "gold" : "neutral"}
           sub={`${quickStats.pendingOrderCount ?? 0} order${quickStats.pendingOrderCount === 1 ? "" : "s"} pending`}
         />
         <StatCard
           label="Wallet"
-          value={walletBalance !== undefined ? <Money v={walletBalance} currency="NGN" /> : "coming soon"}
+          value={walletBalance !== undefined ? <Money v={walletBalance} currency="NGN" compact /> : "coming soon"}
           icon="wallet"
           tone="dark"
           sub="Online sales land here"

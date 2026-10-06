@@ -25,14 +25,37 @@ const SYMBOLS: Record<string, string> = {
 export function fm(v: any, currency = "NGN", opts: { compact?: boolean } = {}): string {
   const n = rawNum(v);
   try {
+    if (opts.compact && Math.abs(n) >= 1000) {
+      return new Intl.NumberFormat("en", {
+        style: "currency",
+        currency,
+        notation: "compact",
+        maximumFractionDigits: 2,
+      }).format(n);
+    }
     return new Intl.NumberFormat("en", {
       style: "currency",
       currency,
       minimumFractionDigits: 0,
-      maximumFractionDigits: Math.abs(n) >= 1000 ? (opts.compact ? 0 : 0) : 2,
+      maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2,
     }).format(n);
   } catch {
-    return `${SYMBOLS[currency] ?? currency + " "}${n.toLocaleString("en", { maximumFractionDigits: 2 })}`;
+    const sym = SYMBOLS[currency] ?? `${currency} `;
+    if (opts.compact && Math.abs(n) >= 1000) {
+      const units: Array<[number, string]> = [
+        [1e9, "B"],
+        [1e6, "M"],
+        [1e3, "K"],
+      ];
+      for (const [d, s] of units) {
+        if (Math.abs(n) >= d) {
+          const x = Math.abs(n) / d;
+          const body = x >= 100 ? x.toFixed(0) : x.toFixed(2).replace(/\.?0+$/, "");
+          return `${n < 0 ? "-" : ""}${sym}${body}${s}`;
+        }
+      }
+    }
+    return `${sym}${n.toLocaleString("en", { maximumFractionDigits: 2 })}`;
   }
 }
 

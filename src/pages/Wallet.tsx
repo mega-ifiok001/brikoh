@@ -252,21 +252,21 @@ export default function Wallet() {
 
             <StatCard
               label="Pending"
-              value={<Money v={pending} currency={currency} />}
+              value={<Money v={pending} currency={currency} compact />}
               icon="clock"
               tone="gold"
               sub="Withdrawals in flight"
             />
             <StatCard
               label="Withdrawn"
-              value={<Money v={withdrawn} currency={currency} />}
+              value={<Money v={withdrawn} currency={currency} compact />}
               icon="banknote"
               tone="neutral"
               sub="Successfully paid out"
             />
             <StatCard
               label="Total earned"
-              value={<Money v={totalCredits} currency={currency} />}
+              value={<Money v={totalCredits} currency={currency} compact />}
               icon="chart"
               tone="green"
               sub="All online payments received"

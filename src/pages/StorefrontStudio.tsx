@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { asList, cls, fd, rawNum, titleCase } from "../lib/format";
@@ -56,6 +56,44 @@ export default function StorefrontStudio() {
 
 /* ------------------------------ Theme & branding ---------------------------- */
 
+/*
+ * The settings endpoint is replace-semantics and validates a strict shape,
+ * so every write re-sends the FULL known object — base values from the last
+ * GET, with the branding overrides layered on top. Never spread the raw GET
+ * response blindly: it can carry server-only fields the PUT rejects.
+ */
+function buildSettingsPayload(base: any, overrides: Record<string, any>) {
+  const b = base || {};
+  return {
+    template: overrides.template ?? b.template ?? "CLASSIC",
+    tagline: overrides.tagline !== undefined ? overrides.tagline : b.tagline ?? null,
+    heroTitle: overrides.heroTitle !== undefined ? overrides.heroTitle : b.heroTitle ?? null,
+    heroSubtitle:
+      overrides.heroSubtitle !== undefined ? overrides.heroSubtitle : b.heroSubtitle ?? null,
+    accentColor:
+      overrides.accentColor !== undefined ? overrides.accentColor : b.accentColor || "#18181b",
+    whatsappButtonEnabled: b.whatsappButtonEnabled ?? false,
+    whatsappNumber: b.whatsappNumber ?? null,
+    showPoweredByBadge: b.showPoweredByBadge ?? true,
+    ga4MeasurementId: b.ga4MeasurementId ?? null,
+    socialLinks: b.socialLinks ?? { instagram: null, facebook: null, tiktok: null },
+  };
+}
+
+/*
+ * Maps an applied template onto the public storefront's template enum
+ * (CLASSIC / MODERN / BOLD). Name/slug keywords cover the seeded themes;
+ * anything unrecognised returns null and the sync is skipped — better to
+ * keep the current public look than guess wrong.
+ */
+function mapTemplateToSettingsEnum(t: any): string | null {
+  const s = `${t?.slug || ""} ${t?.name || ""}`.toLowerCase();
+  if (s.includes("modern")) return "MODERN";
+  if (s.includes("bold") || s.includes("boutique")) return "BOLD";
+  if (s.includes("classic")) return "CLASSIC";
+  return null;
+}
+
 function Studio({
   store,
   patchStore,
@@ -71,13 +109,21 @@ function Studio({
   const [error, setError] = useState<string | null>(null);
 
   const [draft, setDraft] = useState({
-    accentColor: "#B45309",
+    accentColor: "",
+    heroTitle: "",
+    heroSubtitle: "",
+    tagline: "",
     logoUrl: "",
-    heroText: "",
-    heroSubtext: "",
     announcementEnabled: false,
     announcementText: "",
   });
+  /*
+   * Snapshot of the last GET /api/dashboard/settings/storefront response.
+   * That endpoint is replace-semantics, so every save re-sends the full
+   * object built on top of this snapshot — keeping WhatsApp, socials,
+   * powered-by badge and GA4 fields intact when only branding changed.
+   */
+  const settingsSnapshot = useRef<any>(null);
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState<string | null>(null);
 
@@ -89,20 +135,46 @@ function Studio({
     setLoading(true);
     setError(null);
     try {
-      const res: any = await api.get("/api/dashboard/templates");
-      setTemplates(Array.isArray(res.templates) ? res.templates : asList(res, "templates", "items"));
-      setSelectedId(res.selectedTemplateId ?? null);
-      setTier(res.tier || "STARTER");
-      setVisibleCount(res.visibleCount ?? null);
+      /*
+       * Two sources, on purpose:
+       *
+       * - GET /api/dashboard/templates            -> which template is applied.
+       * - GET /api/dashboard/settings/storefront  -> the branding the PUBLIC
+       *   storefront actually renders (heroTitle / heroSubtitle / tagline /
+       *   accentColor / socials / whatsapp).
+       *
+       * The customization endpoint only feeds the template overlay
+       * (logoUrl, announcementBar) — fields the public endpoint does not
+       * serve yet. Settings is fetched defensively: if it fails, the form
+       * still loads from the overlay and saving skips the settings write
+       * instead of clobbering live settings with defaults.
+       */
+      const [templatesRes, settingsRes] = await Promise.all([
+        api.get("/api/dashboard/templates"),
+        api.get("/api/dashboard/settings/storefront").catch(() => null),
+      ]);
 
-      const s = res.settings || {};
+      setTemplates(
+        Array.isArray(templatesRes.templates)
+          ? templatesRes.templates
+          : asList(templatesRes, "templates", "items")
+      );
+      setSelectedId(templatesRes.selectedTemplateId ?? null);
+      setTier(templatesRes.tier || "STARTER");
+      setVisibleCount(templatesRes.visibleCount ?? null);
+
+      const pub = settingsRes || {};
+      settingsSnapshot.current = settingsRes ? { ...pub } : null;
+      const overlay = templatesRes.settings || {};
+
       setDraft({
-        accentColor: s.accentColor || "#B45309",
-        logoUrl: s.logoUrl || "",
-        heroText: s.heroText || "",
-        heroSubtext: s.heroSubtext || "",
-        announcementEnabled: !!s.announcementBar?.enabled,
-        announcementText: s.announcementBar?.text || "",
+        accentColor: pub.accentColor || overlay.accentColor || "",
+        heroTitle: pub.heroTitle || "",
+        heroSubtitle: pub.heroSubtitle || "",
+        tagline: pub.tagline || "",
+        logoUrl: overlay.logoUrl || "",
+        announcementEnabled: !!overlay.announcementBar?.enabled,
+        announcementText: overlay.announcementBar?.text || "",
       });
     } catch (e: any) {
       setError(e?.message || "Couldn't load templates.");
@@ -122,6 +194,28 @@ function Studio({
       setSelectedId(t.id);
       patchStore({ templateId: t.id });
       toast.success(`Theme “${t.name}” applied.`);
+
+      /*
+       * Keep the public storefront in sync. The public endpoint picks its
+       * look from settings.template (CLASSIC / MODERN / BOLD). If the
+       * backend does not mirror templateId into that field when a template
+       * is applied, the store would keep rendering the old look — so
+       * re-read settings and update only `template`. Non-fatal on failure.
+       */
+      try {
+        const [cur, mapped] = await Promise.all([
+          api.get("/api/dashboard/settings/storefront"),
+          Promise.resolve(mapTemplateToSettingsEnum(t)),
+        ]);
+        if (cur && mapped) {
+          await api.put(
+            "/api/dashboard/settings/storefront",
+            buildSettingsPayload(cur, { template: mapped })
+          );
+        }
+      } catch {
+        /* non-fatal — the template apply itself succeeded */
+      }
     } catch (e: any) {
       const msg =
         e?.code === "TEMPLATE_NOT_AVAILABLE"
@@ -136,21 +230,55 @@ function Studio({
   const saveCustomization = async () => {
     setSaving(true);
     try {
-      // Replace semantics — only include fields we want to keep
-      const payload: any = {};
-      if (draft.accentColor) payload.accentColor = draft.accentColor;
+      const accent = draft.accentColor.trim();
+      const heroTitle = draft.heroTitle.trim();
+      const heroSubtitle = draft.heroSubtitle.trim();
+      const tagline = draft.tagline.trim();
+
+      /*
+       * 1) Live storefront settings — what the public page actually
+       *    renders (hero copy, tagline, accent). Only written when the
+       *    settings GET succeeded at load; otherwise skipped so we never
+       *    overwrite live settings with defaults.
+       */
+      let settingsSaved = false;
+      if (settingsSnapshot.current) {
+        await api.put(
+          "/api/dashboard/settings/storefront",
+          buildSettingsPayload(settingsSnapshot.current, {
+            accentColor: accent || undefined,
+            heroTitle: heroTitle || null,
+            heroSubtitle: heroSubtitle || null,
+            tagline: tagline || null,
+          })
+        );
+        settingsSaved = true;
+      }
+
+      /*
+       * 2) Template customization overlay — logo + announcement bar live
+       *    here. Replace semantics: omitted fields are cleared, so only
+       *    include what the user kept.
+       */
+      const payload: any = {
+        accentColor: accent || settingsSnapshot.current?.accentColor || "#18181b",
+      };
+      if (heroTitle) payload.heroText = heroTitle;
+      if (heroSubtitle) payload.heroSubtext = heroSubtitle;
       if (draft.logoUrl.trim()) payload.logoUrl = draft.logoUrl.trim();
-      if (draft.heroText.trim()) payload.heroText = draft.heroText.trim();
-      if (draft.heroSubtext.trim()) payload.heroSubtext = draft.heroSubtext.trim();
       if (draft.announcementEnabled && draft.announcementText.trim()) {
         payload.announcementBar = {
           enabled: true,
           text: draft.announcementText.trim(),
         };
       }
-
       await api.put("/api/dashboard/templates/customization", payload);
-      toast.success("Branding saved.");
+
+      if (settingsSaved) {
+        toast.success("Branding saved.");
+      } else {
+        toast.success("Branding saved to the template overlay.");
+      }
     } catch (e: any) {
       toast.error(e?.message || "Couldn't save branding.");
     } finally {
@@ -246,13 +374,47 @@ function Studio({
                             loading="lazy"
                           />
                         ) : (
-                          <div className="flex h-full w-full flex-col gap-2 bg-gradient-to-br from-cream-100 to-brand-50 p-4">
-                            <div className="h-3 w-2/3 rounded bg-cream-300" />
-                            <div className="h-2 w-full rounded bg-cream-200" />
+                          <div
+                            className={cls(
+                              "flex h-full w-full flex-col gap-2 p-4",
+                              i === 1
+                                ? "bg-ink-900"
+                                : i === 2
+                                ? "bg-gradient-to-br from-brand-500 to-leaf-500"
+                                : "bg-gradient-to-br from-cream-100 to-brand-50"
+                            )}
+                          >
+                            <div
+                              className={cls(
+                                "h-3 w-2/3 rounded",
+                                i === 0 ? "bg-cream-300" : "bg-white/70"
+                              )}
+                            />
+                            <div
+                              className={cls(
+                                "h-2 w-full rounded",
+                                i === 0 ? "bg-cream-200" : "bg-white/40"
+                              )}
+                            />
                             <div className="mt-auto grid grid-cols-3 gap-2">
-                              <div className="h-10 rounded bg-white" />
-                              <div className="h-10 rounded bg-white" />
-                              <div className="h-10 rounded bg-white" />
+                              <div
+                                className={cls(
+                                  "h-10",
+                                  i === 0 ? "rounded bg-white" : "rounded-none bg-white/90"
+                                )}
+                              />
+                              <div
+                                className={cls(
+                                  "h-10",
+                                  i === 0 ? "rounded bg-white" : "rounded-none bg-white/90"
+                                )}
+                              />
+                              <div
+                                className={cls(
+                                  "h-10",
+                                  i === 0 ? "rounded bg-white" : "rounded-none bg-white/90"
+                                )}
+                              />
                             </div>
                           </div>
                         )}
@@ -296,40 +458,48 @@ function Studio({
               Branding
             </h3>
             <p className="mt-0.5 text-xs text-ink-400">
-              Layered on top of the chosen template. Available on every plan.
+              Saved straight to your live storefront — hero copy, tagline, accent colour, logo and
+              announcement bar.
             </p>
             <div className="mt-4 space-y-4">
-              <Field label="Hero text">
+              <Field label="Tagline" hint="Small eyebrow line above the hero title.">
                 <Input
-                  value={draft.heroText}
-                  onChange={(e) =>
-                    setDraft({ ...draft, heroText: e.target.value })
-                  }
+                  value={draft.tagline}
+                  onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
+                  placeholder="Fresh markets, honest prices"
+                  maxLength={60}
+                />
+              </Field>
+              <Field label="Hero title">
+                <Input
+                  value={draft.heroTitle}
+                  onChange={(e) => setDraft({ ...draft, heroTitle: e.target.value })}
                   placeholder="Fresh from Lagos"
                   maxLength={80}
                 />
               </Field>
-              <Field label="Hero subtext">
+              <Field label="Hero subtitle">
                 <Input
-                  value={draft.heroSubtext}
-                  onChange={(e) =>
-                    setDraft({ ...draft, heroSubtext: e.target.value })
-                  }
+                  value={draft.heroSubtitle}
+                  onChange={(e) => setDraft({ ...draft, heroSubtitle: e.target.value })}
                   placeholder="Handpicked goods, delivered daily"
                   maxLength={160}
                 />
               </Field>
-              <Field label="Accent colour">
+              <Field label="Accent colour" hint="Hex value — tints buttons, prices and the hero.">
                 <Input
                   value={draft.accentColor}
                   onChange={(e) =>
                     setDraft({ ...draft, accentColor: e.target.value })
                   }
-                  placeholder="#B45309"
+                  placeholder="#18181b"
                   className="font-mono"
                 />
               </Field>
-              <Field label="Logo URL" hint="HTTPS URL from your uploads.">
+              <Field
+                label="Logo URL"
+                hint="HTTPS URL from your uploads. Shows in the storefront header once template customisations are served publicly."
+              >
                 <Input
                   value={draft.logoUrl}
                   onChange={(e) =>

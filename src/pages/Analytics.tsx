@@ -321,7 +321,7 @@ function OverviewTab({
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Total sales"
-          value={<Money v={totalSales} currency={currency} />}
+          value={<Money v={totalSales} currency={currency} compact />}
           icon="banknote"
           tone="green"
           sub="PAID + SHIPPED orders"
@@ -329,7 +329,7 @@ function OverviewTab({
         <StatCard label="Orders" value={orderCount} icon="receipt" tone="brand" />
         <StatCard
           label="Avg. order value"
-          value={<Money v={avgOrderValue} currency={currency} />}
+          value={<Money v={avgOrderValue} currency={currency} compact />}
           icon="chart"
           tone="gold"
         />
@@ -403,14 +403,14 @@ function TrendsTab({ data, currency }: { data: any | Locked | null; currency: st
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="This period"
-          value={<Money v={current} currency={currency} />}
+          value={<Money v={current} currency={currency} compact />}
           icon="banknote"
           tone="green"
           sub={`${data.totals?.orderCount ?? 0} orders`}
         />
         <StatCard
           label="Previous period"
-          value={<Money v={previous} currency={currency} />}
+          value={<Money v={previous} currency={currency} compact />}
           icon="clock"
           tone="neutral"
           sub={`${fd(data.previousPeriod?.start)} → ${fd(data.previousPeriod?.end)}`}

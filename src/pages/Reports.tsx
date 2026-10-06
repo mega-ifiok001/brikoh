@@ -205,28 +205,28 @@ export default function Reports() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Revenue"
-          value={<Money v={revenue} currency={currency} />}
+          value={<Money v={revenue} currency={currency} compact />}
           icon="banknote"
           tone="green"
           sub="PAID + SHIPPED orders"
         />
         <StatCard
           label="Cost of goods"
-          value={<Money v={cogs} currency={currency} />}
+          value={<Money v={cogs} currency={currency} compact />}
           icon="package"
           tone="neutral"
           sub={unpriced > 0 ? `${unpriced} unpriced` : "At cost price"}
         />
         <StatCard
           label="Expenses"
-          value={<Money v={expenses} currency={currency} />}
+          value={<Money v={expenses} currency={currency} compact />}
           icon="banknote"
           tone="gold"
           sub={`${byCategory.length} categor${byCategory.length === 1 ? "y" : "ies"}`}
         />
         <StatCard
           label="Invoice payments received"
-          value={<Money v={invoicePaymentsReceived} currency={currency} />}
+          value={<Money v={invoicePaymentsReceived} currency={currency} compact />}
           icon="file"
           tone="brand"
           sub="All payments recorded on invoices"
