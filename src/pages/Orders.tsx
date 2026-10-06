@@ -9,6 +9,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  Icon,
   Input,
   KV,
   LoadMore,
@@ -438,6 +439,14 @@ export default function Orders() {
                     >
                       <td className="font-bold">
                         {o.orderNumber}
+                        {o.delivery && (
+                          <span
+                            className="ml-1.5 inline-flex align-middle text-brand-600"
+                            title="Delivery order"
+                          >
+                            <Icon name="truck" size={13} />
+                          </span>
+                        )}
                       </td>
 
                       <td className="whitespace-nowrap text-ink-500">
@@ -662,6 +671,67 @@ export default function Orders() {
                 />
               </div>
             </div>
+
+            {/* Delivery snapshot — where/how to fulfil the order (buyer-typed at checkout) */}
+            {detail.delivery && (
+              <div className="mt-5 rounded-xl border border-cream-200 p-4">
+                <p className="mb-3 text-xs font-extrabold uppercase tracking-wide text-ink-400">
+                  Delivery
+                </p>
+
+                <div className="grid gap-x-8 sm:grid-cols-2">
+                  <KV
+                    label="Option"
+                    value={detail.delivery.optionName || "—"}
+                  />
+
+                  <KV
+                    label="Fee"
+                    value={
+                      <Money
+                        v={detail.delivery.fee ?? "0.00"}
+                        currency={currency}
+                      />
+                    }
+                  />
+
+                  <KV
+                    label="City"
+                    value={detail.delivery.city || "—"}
+                  />
+
+                  <KV
+                    label="State"
+                    value={detail.delivery.state || "—"}
+                  />
+
+                  <div className="sm:col-span-2">
+                    <KV
+                      label="Address"
+                      value={detail.delivery.address || "—"}
+                    />
+                  </div>
+
+                  {detail.delivery.phone && (
+                    <div className="sm:col-span-2">
+                      <KV
+                        label="Delivery phone"
+                        value={detail.delivery.phone}
+                      />
+                    </div>
+                  )}
+
+                  {detail.delivery.instructions && (
+                    <div className="sm:col-span-2">
+                      <KV
+                        label="Instructions"
+                        value={detail.delivery.instructions}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Manual payment confirmation */}
             {isAwaitingManualConfirmation && (

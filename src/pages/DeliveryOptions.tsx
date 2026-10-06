@@ -19,8 +19,6 @@ import {
   toast,
 } from "../components/ui";
 
-type DeliveryZoneRow = { name: string; fee: string };
-
 /**
  * Validate + normalize a fee into a 2dp decimal string (>= 0, <= 99,999,999.99).
  * Returns null when the input isn't a clean money value.
@@ -43,7 +41,6 @@ const BLANK_OPTION_FORM = {
   baseFee: "",
   isActive: true,
   pickupAddressText: "",
-  zones: [] as DeliveryZoneRow[],
 };
 
 export default function DeliveryOptions() {
@@ -93,20 +90,10 @@ export default function DeliveryOptions() {
       baseFee: o.baseFee != null ? String(o.baseFee) : "",
       isActive: o.isActive !== false,
       pickupAddressText: o.pickupAddressText || "",
-      zones: (Array.isArray(o.zones) ? o.zones : []).map((z: any) => ({
-        name: z?.name || "",
-        fee: z?.fee != null ? String(z.fee) : "",
-      })),
     });
     setFormErr("");
     setFormOpen(true);
   };
-
-  const setZone = (index: number, patch: Partial<DeliveryZoneRow>) =>
-    setForm((f) => ({
-      ...f,
-      zones: f.zones.map((z, i) => (i === index ? { ...z, ...patch } : z)),
-    }));
 
   const submit = async () => {
     const name = form.name.trim();
@@ -120,29 +107,6 @@ export default function DeliveryOptions() {
         "Base fee must be a number with at most 2 decimal places (max 99,999,999.99)."
       );
 
-    const zones: DeliveryZoneRow[] = [];
-    if (form.kind === "DELIVERY") {
-      if (form.zones.length > 50)
-        return setFormErr("An option can have at most 50 zones.");
-      const seen = new Set<string>();
-      for (const zone of form.zones) {
-        const zoneName = zone.name.trim();
-        if (!zoneName) return setFormErr("Every zone needs a name.");
-        if (zoneName.length > 200)
-          return setFormErr("Zone names must be 200 characters or fewer.");
-        const key = zoneName.toLowerCase();
-        if (seen.has(key))
-          return setFormErr(`Duplicate zone name: “${zoneName}”.`);
-        seen.add(key);
-        const fee = normalizeFee(zone.fee);
-        if (fee === null)
-          return setFormErr(
-            `Zone “${zoneName}” needs a fee with at most 2 decimal places.`
-          );
-        zones.push({ name: zoneName, fee });
-      }
-    }
-
     setFormBusy(true);
     setFormErr("");
 
@@ -152,9 +116,6 @@ export default function DeliveryOptions() {
       description: form.description.trim() || null,
       baseFee,
       isActive: form.isActive,
-      // zones always replace the full list on PUT (dropped zones are deleted);
-      // PICKUP options carry none.
-      zones: form.kind === "DELIVERY" ? zones : [],
       ...(form.kind === "PICKUP"
         ? { pickupAddressText: form.pickupAddressText.trim() || null }
         : {}),
@@ -223,8 +184,8 @@ export default function DeliveryOptions() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-ink-400">
           The fulfilment choices buyers pick at checkout. The fee charged is
-          the base fee plus the selected zone's fee. With at least one live
-          option, checkout requires a selection.
+          the option's flat base fee. With at least one live option, checkout
+          requires a selection.
         </p>
         <Button icon="plus" onClick={openCreate}>
           New option
@@ -286,19 +247,6 @@ export default function DeliveryOptions() {
                   {o.description ? ` · ${o.description}` : ""}
                 </p>
 
-                {Array.isArray(o.zones) && o.zones.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {o.zones.map((z: any) => (
-                      <span
-                        key={z.id}
-                        className="rounded-full bg-cream-100 px-2.5 py-1 text-xs font-bold text-ink-600"
-                      >
-                        {z.name} +<Money v={z.fee} currency={currency} />
-                      </span>
-                    ))}
-                  </div>
-                )}
-
                 {o.kind === "PICKUP" &&
                   (o.pickupAddressText || o.pickupLocation?.address) && (
                     <p className="mt-1.5 flex items-start gap-1.5 text-xs text-ink-400">
@@ -334,7 +282,7 @@ export default function DeliveryOptions() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={editing ? `Edit — ${editing.name}` : "New delivery option"}
-        sub="Buyers pick one of these at checkout — the fee charged is the base fee plus the zone fee."
+        sub="Buyers pick one of these at checkout — the fee charged is the option's flat base fee."
         wide
         footer={
           <>
@@ -401,7 +349,7 @@ export default function DeliveryOptions() {
             />
           </Field>
 
-          {form.kind === "PICKUP" ? (
+          {form.kind === "PICKUP" && (
             <Field
               label="Pickup address"
               className="sm:col-span-2"
@@ -417,69 +365,6 @@ export default function DeliveryOptions() {
                 placeholder="12 Marina Rd, Lagos Island — Mon–Fri, 10am–4pm"
               />
             </Field>
-          ) : (
-            <div className="sm:col-span-2">
-              <div className="mb-1 flex items-center justify-between">
-                <label className="lbl">Delivery zones</label>
-                <span className="text-xs font-semibold text-ink-400">
-                  {form.zones.length}/50
-                </span>
-              </div>
-              <p className="mb-2.5 text-xs text-ink-400">
-                Named areas with their own fee, added on top of the base fee.
-                Saving replaces the whole list — orders already placed keep the
-                fee they were charged.
-              </p>
-              {form.zones.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-cream-300 px-4 py-3 text-xs text-ink-400">
-                  No zones — buyers are charged just the base fee.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {form.zones.map((z, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Input
-                        value={z.name}
-                        onChange={(e) => setZone(i, { name: e.target.value })}
-                        placeholder="e.g. Lekki"
-                        maxLength={200}
-                      />
-                      <Input
-                        value={z.fee}
-                        onChange={(e) => setZone(i, { fee: e.target.value })}
-                        placeholder="0.00"
-                        inputMode="decimal"
-                        className="w-28 shrink-0"
-                      />
-                      <IconBtn
-                        name="trash"
-                        label="Remove zone"
-                        onClick={() =>
-                          setForm((f) => ({
-                            ...f,
-                            zones: f.zones.filter((_, idx) => idx !== i),
-                          }))
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                icon="plus"
-                className="mt-2.5"
-                onClick={() =>
-                  setForm((f) => ({
-                    ...f,
-                    zones: [...f.zones, { name: "", fee: "" }],
-                  }))
-                }
-              >
-                Add zone
-              </Button>
-            </div>
           )}
         </div>
       </Modal>

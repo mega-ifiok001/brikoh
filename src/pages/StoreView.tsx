@@ -46,12 +46,6 @@ interface StorefrontProduct {
   stockStatus: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
 }
 
-interface DeliveryZone {
-  id: string;
-  name: string;
-  fee: string;
-}
-
 interface DeliveryOption {
   id: string;
   name: string;
@@ -62,7 +56,6 @@ interface DeliveryOption {
   pickupLocationId?: string | null;
   pickupAddressText?: string | null;
   pickupLocation?: { id: string; name: string; address: string } | null;
-  zones: DeliveryZone[];
 }
 
 interface StorefrontCampaign {
@@ -101,7 +94,7 @@ interface StorefrontResponse {
   campaign: StorefrontCampaign | null;
 
   /*
-   * Store's active fulfilment choices (PICKUP / DELIVERY with zones).
+   * Store's active fulfilment choices (PICKUP / DELIVERY, flat base fee).
    * May not exist on older backend deployments — read defensively.
    */
   deliveryOptions?: DeliveryOption[];
@@ -633,7 +626,6 @@ export default function StoreView() {
   const [availablePaymentMethods, setAvailablePaymentMethods] = useState<PaymentMethod[]>([]);
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [deliveryOptionId, setDeliveryOptionId] = useState<string>("");
-  const [deliveryZoneId, setDeliveryZoneId] = useState<string>("");
 
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -654,6 +646,14 @@ export default function StoreView() {
   const [variantPick, setVariantPick] = useState<StorefrontProduct | null>(null);
   const [code, setCode] = useState("");
   const [customer, setCustomer] = useState({ name: "", phone: "", email: "" });
+  // Buyer-typed delivery address — only collected for DELIVERY options.
+  const [addr, setAddr] = useState({
+    address: "",
+    city: "",
+    state: "",
+    phone: "",
+    instructions: "",
+  });
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paystack");
   const [checkingOut, setCheckingOut] = useState(false);
 
@@ -723,7 +723,6 @@ export default function StoreView() {
       // Fulfilment options — defensive: absent on older deployments.
       setDeliveryOptions(Array.isArray(res?.deliveryOptions) ? res.deliveryOptions : []);
       setDeliveryOptionId("");
-      setDeliveryZoneId("");
 
       if (methods.includes("paystack")) {
         setPaymentMethod("paystack");
@@ -1091,12 +1090,19 @@ export default function StoreView() {
     }
 
     // When the store publishes fulfilment options, one must be chosen —
-    // and a DELIVERY option with zones requires a zone (it prices the fee).
+    // and a DELIVERY option needs the buyer's address (and phone) to ship to.
     if (deliveryOptions.length > 0 && !selectedDelivery) {
       return setErr("Please choose a delivery or pickup option.");
     }
-    if (selectedDelivery && selectedDelivery.zones.length > 0 && !selectedZone) {
-      return setErr("Please choose a delivery zone.");
+    if (selectedDelivery?.kind === "DELIVERY") {
+      if (!addr.phone.trim()) {
+        return setErr(
+          "Please enter a delivery phone number — the seller needs it to deliver."
+        );
+      }
+      if (!addr.address.trim()) return setErr("Please enter your delivery address.");
+      if (!addr.city.trim()) return setErr("Please enter your city.");
+      if (!addr.state.trim()) return setErr("Please enter your state.");
     }
 
     setCheckingOut(true);
@@ -1115,7 +1121,17 @@ export default function StoreView() {
         })),
         ...(code.trim() ? { discountCode: code.trim().toUpperCase() } : {}),
         ...(selectedDelivery ? { deliveryOptionId: selectedDelivery.id } : {}),
-        ...(selectedZone ? { deliveryZoneId: selectedZone.id } : {}),
+        ...(selectedDelivery?.kind === "DELIVERY"
+          ? {
+              deliveryAddress: addr.address.trim(),
+              deliveryCity: addr.city.trim(),
+              deliveryState: addr.state.trim(),
+              deliveryPhone: addr.phone.trim(),
+              ...(addr.instructions.trim()
+                ? { deliveryInstructions: addr.instructions.trim() }
+                : {}),
+            }
+          : {}),
         origin: "DIRECT",
         paymentMethod,
       };
@@ -1248,12 +1264,9 @@ export default function StoreView() {
 
   const selectedDelivery =
     deliveryOptions.find((option) => option.id === deliveryOptionId) || null;
-  const selectedZone =
-    selectedDelivery?.zones.find((zone) => zone.id === deliveryZoneId) || null;
-  // Fee = baseFee + zoneFee (the zone fee applies only when a zone is chosen).
-  const deliveryFee = selectedDelivery
-    ? rawNum(selectedDelivery.baseFee) + (selectedZone ? rawNum(selectedZone.fee) : 0)
-    : 0;
+  // Fee = the option's flat base fee (read server-side from the option —
+  // the client never sends a fee).
+  const deliveryFee = selectedDelivery ? rawNum(selectedDelivery.baseFee) : 0;
   const cartTotal = subtotal + deliveryFee;
 
   const paystackAvailable = availablePaymentMethods.includes("paystack");
@@ -2293,7 +2306,6 @@ export default function StoreView() {
                               type="button"
                               onClick={() => {
                                 setDeliveryOptionId(option.id);
-                                setDeliveryZoneId("");
                                 setErr("");
                               }}
                               disabled={checkingOut}
@@ -2323,40 +2335,6 @@ export default function StoreView() {
                               </span>
                             </button>
 
-                            {active && option.zones.length > 0 && (
-                              <div className="mt-2 grid gap-1.5 rounded-xl border border-cream-200 bg-cream-50 p-2.5">
-                                <p className="px-1 text-[10px] font-extrabold uppercase tracking-wide text-ink-400">
-                                  Delivery area
-                                </p>
-                                {option.zones.map((zone) => {
-                                  const zoneActive = deliveryZoneId === zone.id;
-                                  return (
-                                    <button
-                                      key={zone.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setDeliveryZoneId(zone.id);
-                                        setErr("");
-                                      }}
-                                      disabled={checkingOut}
-                                      className={cls(
-                                        "flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-all",
-                                        zoneActive
-                                          ? "border-brand-400 bg-white font-extrabold shadow-sm"
-                                          : "border-transparent bg-white/70 text-ink-600 hover:border-brand-300",
-                                        checkingOut && "cursor-not-allowed opacity-70"
-                                      )}
-                                    >
-                                      <span>{zone.name}</span>
-                                      <span className="tabular-nums">
-                                        +{fm(rawNum(zone.fee), DEFAULT_CURRENCY)}
-                                      </span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-
                             {active &&
                               option.kind === "PICKUP" &&
                               (option.pickupAddressText ||
@@ -2377,6 +2355,54 @@ export default function StoreView() {
                         );
                       })}
                     </div>
+
+                    {selectedDelivery?.kind === "DELIVERY" && (
+                      <div className="mt-2 grid gap-2 rounded-xl border border-cream-200 bg-cream-50 p-3">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-ink-400">
+                          Delivery address
+                        </p>
+                        <Input
+                          value={addr.address}
+                          maxLength={500}
+                          onChange={(e) => setAddr({ ...addr, address: e.target.value })}
+                          placeholder="Street address"
+                          disabled={checkingOut}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            value={addr.city}
+                            maxLength={120}
+                            onChange={(e) => setAddr({ ...addr, city: e.target.value })}
+                            placeholder="City"
+                            disabled={checkingOut}
+                          />
+                          <Input
+                            value={addr.state}
+                            maxLength={120}
+                            onChange={(e) => setAddr({ ...addr, state: e.target.value })}
+                            placeholder="State"
+                            disabled={checkingOut}
+                          />
+                        </div>
+                        <Input
+                          type="tel"
+                          value={addr.phone}
+                          maxLength={30}
+                          onChange={(e) => setAddr({ ...addr, phone: e.target.value })}
+                          placeholder="Delivery phone (required)"
+                          disabled={checkingOut}
+                        />
+                        <Input
+                          value={addr.instructions}
+                          maxLength={500}
+                          onChange={(e) =>
+                            setAddr({ ...addr, instructions: e.target.value })
+                          }
+                          placeholder="Delivery instructions (optional)"
+                          disabled={checkingOut}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2500,7 +2526,7 @@ export default function StoreView() {
                 {selectedDelivery && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-bold text-ink-500">
-                      Delivery{selectedZone ? ` · ${selectedZone.name}` : ""}
+                      Delivery
                     </span>
                     <span className="text-sm font-extrabold tabular-nums">
                       {deliveryFee > 0 ? fm(deliveryFee, DEFAULT_CURRENCY) : "Free"}
