@@ -326,10 +326,7 @@ export default function Landing() {
       <header className="sticky top-0 z-40 border-b border-cream-200 bg-cream-50/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 sm:px-6">
           <Link to="/" className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500 text-white">
-              <Icon name="logo" size={22} />
-            </span>
-            <span className="font-display text-xl font-extrabold tracking-tight">brikoh</span>
+            <img src="/logo.png" width={100} alt="" />
           </Link>
           <nav className="hidden items-center gap-6 text-sm font-bold text-ink-500 md:flex">
             <a href="#pricing" className="hover:text-ink-900">Pricing</a>
@@ -808,10 +805,7 @@ export default function Landing() {
       <footer className="border-t border-cream-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0A100D] text-white">
-              <Icon name="logo" size={19} />
-            </span>
-            <span className="font-display text-lg font-extrabold tracking-tight">brikoh</span>
+           <img src="/logo.png" width={100} alt="" />
             <span className="ml-2 text-xs font-semibold text-ink-300">
               all-in-one commerce for your store
             </span>

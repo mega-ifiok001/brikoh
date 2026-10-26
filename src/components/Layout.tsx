@@ -66,12 +66,7 @@ const NAV: NavGroup[] = [
 function Brand({ light }: { light?: boolean }) {
   return (
     <Link to="/dashboard" className="flex items-center gap-2.5">
-      <span className={cls("flex h-9 w-9 items-center justify-center rounded-xl", light ? "bg-brand-500 text-white" : "bg-brand-500 text-white")}>
-        <Icon name="logo" size={22} />
-      </span>
-      <span className={cls("font-display text-xl font-extrabold tracking-tight", light ? "text-cream-50" : "text-ink-900")}>
-        brikoh
-      </span>
+     <img src="/logo-white.png" width={100} alt="" />
     </Link>
   );
 }

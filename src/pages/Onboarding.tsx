@@ -161,10 +161,7 @@ export default function Onboarding() {
     <div className="flex min-h-screen items-center justify-center bg-cream-50 px-4 py-10">
       <div className="anim-rise w-full max-w-xl">
         <div className="mb-8 flex items-center gap-2.5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-white">
-            <Icon name="logo" size={24} />
-          </span>
-          <span className="font-display text-2xl font-extrabold tracking-tight">brikoh</span>
+         <img src="/logo.png" width={100} alt="" />
         </div>
 
         <div className="mb-6">

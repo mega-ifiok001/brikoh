@@ -25,10 +25,8 @@ function AuthShell({ children, headline, sub }: { children: ReactNode; headline:
         <div className="absolute inset-0 bg-gradient-to-t from-ink-900/85 via-ink-900/35 to-ink-900/20" />
         <div className="absolute inset-0 flex flex-col justify-between p-10">
           <Link to="/" className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500 text-white">
-              <Icon name="logo" size={24} />
-            </span>
-            <span className="font-display text-2xl font-extrabold tracking-tight text-cream-50">brikoh</span>
+                    <img src="/logo-white.png" width={100} alt="" />
+
           </Link>
           <div>
             <h2 className="max-w-sm font-display text-4xl font-extrabold leading-tight text-cream-50">
@@ -44,10 +42,8 @@ function AuthShell({ children, headline, sub }: { children: ReactNode; headline:
       <div className="flex flex-1 items-center justify-center px-4 py-10 sm:px-8">
         <div className="anim-rise w-full max-w-md">
           <Link to="/" className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500 text-white">
-              <Icon name="logo" size={22} />
-            </span>
-            <span className="font-display text-xl font-extrabold tracking-tight">brikoh</span>
+                    <img src="/logo.png" width={100} alt="" />
+
           </Link>
           <h1 className="font-display text-3xl font-extrabold tracking-tight">{headline}</h1>
           <p className="mt-1.5 text-sm text-ink-400">{sub}</p>
