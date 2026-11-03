@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
@@ -86,6 +86,20 @@ export default function POS() {
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
 
+  // Ticket panel ref — used to scroll to it on mobile/tablet, where the
+  // ticket is stacked below the product grid (below the `xl` breakpoint).
+  const ticketRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToTicket = useCallback(() => {
+    // Only when the ticket is stacked under the catalog (< xl = 1280px).
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(max-width: 1279px)").matches) return;
+    // Small delay so the ticket re-renders (and any modal closes) first.
+    window.setTimeout(() => {
+      ticketRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -133,26 +147,30 @@ export default function POS() {
   }, []);
 
   const addToCart = (p: any) => {
+    // Products with variants open the picker first; we scroll after a variant is chosen.
     if (p.variants?.length) {
       setVariantPick(p);
       return;
     }
     const max = stockOf(p);
+    if (max <= 0) {
+      toast.error(`${p.name} is out of stock.`);
+      return;
+    }
+    const existing = lines.find((l) => l.productId === p.id && !l.variantId);
+    if (existing && existing.qty >= max) {
+      toast.error("No more stock on this product.");
+      return;
+    }
     setLines((ls) => {
       const ex = ls.find((l) => l.productId === p.id && !l.variantId);
       if (ex) {
-        if (ex.qty >= max) {
-          toast.error("No more stock on this product.");
-          return ls;
-        }
+        if (ex.qty >= max) return ls;
         return ls.map((l) => (l.key === ex.key ? { ...l, qty: l.qty + 1 } : l));
-      }
-      if (max <= 0) {
-        toast.error(`${p.name} is out of stock.`);
-        return ls;
       }
       return [...ls, { key: p.id, productId: p.id, name: p.name, price: effPrice(p), qty: 1, max }];
     });
+    scrollToTicket();
   };
 
   const addVariant = (p: any, v: any) => {
@@ -161,13 +179,15 @@ export default function POS() {
       toast.error(`${v.name} is out of stock.`);
       return;
     }
+    const existing = lines.find((l) => l.productId === p.id && l.variantId === v.id);
+    if (existing && existing.qty >= max) {
+      toast.error("No more stock on this variant.");
+      return;
+    }
     setLines((ls) => {
       const ex = ls.find((l) => l.productId === p.id && l.variantId === v.id);
       if (ex) {
-        if (ex.qty >= max) {
-          toast.error("No more stock on this variant.");
-          return ls;
-        }
+        if (ex.qty >= max) return ls;
         return ls.map((l) => (l.key === ex.key ? { ...l, qty: l.qty + 1 } : l));
       }
       return [
@@ -185,6 +205,7 @@ export default function POS() {
       ];
     });
     setVariantPick(null);
+    scrollToTicket();
   };
 
   const bump = (key: string, d: number) => {
@@ -378,7 +399,10 @@ export default function POS() {
         </div>
 
         {/* Ticket */}
-        <div className="card anim-rise self-start overflow-hidden xl:sticky xl:top-20">
+        <div
+          ref={ticketRef}
+          className="card anim-rise scroll-mt-20 self-start overflow-hidden xl:sticky xl:top-20"
+        >
           <div className="flex items-center justify-between border-b border-cream-200 px-4 py-3">
             <h3 className="flex items-center gap-2 font-display text-base font-extrabold">
               <Icon name="receipt" size={17} className="text-brand-500" />
@@ -561,8 +585,8 @@ export default function POS() {
             </div>
           )}
           {receipt?.redirectUrl && (
-            
-            <a  href={receipt.redirectUrl}
+            <a
+              href={receipt.redirectUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-xl bg-ink-900 px-5 py-3 text-sm font-extrabold text-cream-50"

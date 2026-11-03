@@ -23,6 +23,45 @@ const PERIODS = [
 
 type PeriodKey = (typeof PERIODS)[number]["key"];
 
+/**
+ * Compute the start/end of a period in the user's local time.
+ * Week starts on Monday. End is the end of today.
+ */
+function rangeFor(period: PeriodKey): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(now);
+
+  switch (period) {
+    case "week": {
+      const day = now.getDay(); // 0 = Sunday
+      const diff = day === 0 ? 6 : day - 1; // days since Monday
+      start.setDate(now.getDate() - diff);
+      break;
+    }
+    case "month":
+      start.setDate(1);
+      break;
+    case "quarter":
+      start.setMonth(Math.floor(now.getMonth() / 3) * 3, 1);
+      break;
+    case "year":
+      start.setMonth(0, 1);
+      break;
+  }
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function periodQuery(period: PeriodKey): string {
+  const { start, end } = rangeFor(period);
+  const qs = new URLSearchParams({ period, start, end });
+  return qs.toString();
+}
+
 export default function Reports() {
   const { me } = useAuth();
   const currency: string = (me.store as any)?.currency || "NGN";
@@ -40,7 +79,7 @@ export default function Reports() {
     setLoading(true);
     setError(null);
     try {
-      const qs = `period=${period}`;
+      const qs = periodQuery(period);
 
       const [pnlRes, expRes, invRes] = await Promise.all([
         api.get(`/api/dashboard/reports/pnl?${qs}`),
@@ -56,19 +95,16 @@ export default function Reports() {
       setInventory(invRes);
 
       // Invoice payments received — sum amountPaid across all non-draft invoices.
-
-
-
       // The invoices list API has no date-range filter, so this is all-time.
-
-
       try {
         let cursor: string | null = null;
         let totalInvoicePayments = 0;
         do {
-          const qs = new URLSearchParams({ limit: "100" });
-          if (cursor) qs.set("cursor", cursor);
-          const res: any = await api.get(`/api/dashboard/invoices?${qs.toString()}`);
+          const invQs = new URLSearchParams({ limit: "100" });
+          if (cursor) invQs.set("cursor", cursor);
+          const res: any = await api.get(
+            `/api/dashboard/invoices?${invQs.toString()}`
+          );
           const list = asList(res, "items", "invoices", "data");
           for (const inv of list) {
             if (inv.status === "PAID" || inv.status === "ISSUED") {
@@ -104,14 +140,15 @@ export default function Reports() {
 
   const downloadCsv = async (
     path: string,
-    fallbackName: string
+    fallbackName: string,
+    withPeriod = true
   ) => {
     try {
-      // Tokens live under `brikoh.at` (see lib/api.ts); reading a generic
-      // "token" key always returned undefined, and there is no api.baseUrl.
-      // Use the real helpers so the Authorization header and host are correct.
+      // Tokens live under `brikoh.at` (see lib/api.ts); use the real helpers
+      // so the Authorization header and host are correct.
       const token = getAccessToken() || "";
-      const res = await fetch(`${API_BASE}${path}?period=${period}`, {
+      const query = withPeriod ? `?${periodQuery(period)}` : "";
+      const res = await fetch(`${API_BASE}${path}${query}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error("Export failed");
@@ -376,7 +413,8 @@ export default function Reports() {
                 onClick={() =>
                   downloadCsv(
                     "/api/dashboard/reports/inventory-valuation/export.csv",
-                    "inventory-valuation.csv"
+                    "inventory-valuation.csv",
+                    false
                   )
                 }
               >
