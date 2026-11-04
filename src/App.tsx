@@ -44,14 +44,24 @@ const isDashboardHost = () =>
 // Returns the merchant's subdomain if the current hostname is
 // "<subdomain>.brikoh.com" and it's not a reserved/system subdomain.
 // Returns null for brikoh.com itself, dashboard.brikoh.com, localhost, etc.
+
 function getStoreSubdomain(): string | null {
   if (typeof window === "undefined") return null;
-  const host = window.location.hostname;
+
+  const host = window.location.hostname.toLowerCase();
+
+  // Only detect merchant storefronts on Brikoh's actual domain.
+  if (!host.endsWith(".brikoh.com")) return null;
+
   const parts = host.split(".");
-  // "gemluxe.brikoh.com" -> ["gemluxe", "brikoh", "com"] (length 3)
-  if (parts.length < 3) return null;
+
+  // Require exactly: subdomain.brikoh.com
+  if (parts.length !== 3) return null;
+
   const sub = parts[0];
+
   if (RESERVED_SUBDOMAINS.has(sub)) return null;
+
   return sub;
 }
 
