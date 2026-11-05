@@ -81,7 +81,7 @@ export default function Wallet() {
       try {
         aRes = await api.get("/api/dashboard/wallet/bank-accounts");
       } catch {
-        aRes = await api.get("/api/dashboard/bank-accounts");
+        aRes = await api.get("/api/dashboard/wallet/bank-accounts");
       }
       const list = asList(aRes, "bankAccounts", "accounts", "items", "data");
       setAccounts(list);

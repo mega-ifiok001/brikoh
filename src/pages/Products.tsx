@@ -2707,7 +2707,7 @@ export default function Products() {
           </Field>
 
           <Field
-            label={`Discount price (${currency})`}
+            label={`Discount price (${currency}) - Optional`}
           >
             <Input
               type="number"
