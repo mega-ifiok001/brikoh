@@ -25,21 +25,26 @@ import SettingsPage from "./pages/SettingsPage";
 import StoreView from "./pages/StoreView";
 import Tickets from "./pages/Tickets";
 import PublicInvoicePage from "./pages/PublicInvoicePage";
+import Careers from "./pages/Careers";
 
 // ── Cross-subdomain config ────────────────────────────────────────────────
-// The SAME build is deployed to brikoh.com, dashboard.brikoh.com, and every
-// merchant's *.brikoh.com storefront subdomain (via the wildcard domain on
+// The SAME build is deployed to brikoh.com, dashboard.brikoh.com, careers.brikoh.com
+// and every merchant's *.brikoh.com storefront subdomain (via the wildcard domain on
 // Vercel). Which screens render is decided at runtime by checking
 // window.location.hostname.
 const DASHBOARD_HOST = "dashboard.brikoh.com";
+const CAREERS_HOST = "careers.brikoh.com";
 const MAIN_HOST = "brikoh.com"; // change to "www.brikoh.com" if that's your canonical host
 
 // Hostnames that are NOT a merchant storefront subdomain, even though they
 // match "something.brikoh.com".
-const RESERVED_SUBDOMAINS = new Set(["dashboard", "www", "api", "app"]);
+const RESERVED_SUBDOMAINS = new Set(["dashboard", "www", "api", "app", "careers"]);
 
 const isDashboardHost = () =>
   typeof window !== "undefined" && window.location.hostname === DASHBOARD_HOST;
+
+const isCareersHost = () =>
+  typeof window !== "undefined" && window.location.hostname === CAREERS_HOST;
 
 // Returns the merchant's subdomain if the current hostname is
 // "<subdomain>.brikoh.com" and it's not a reserved/system subdomain.
@@ -153,6 +158,7 @@ function NotFound() {
 
 export default function App() {
   const onDashboardHost = isDashboardHost();
+  const onCareersHost = isCareersHost();
   const storeSubdomain = getStoreSubdomain();
 
   return (
@@ -170,6 +176,8 @@ export default function App() {
                     <Navigate to="/dashboard" replace />
                   </RequireStore>
                 </RequireAuth>
+              ) : onCareersHost ? (
+                <Careers />
               ) : storeSubdomain ? (
                 // e.g. gemluxe.brikoh.com — render that merchant's storefront
                 // directly instead of the marketing Landing page.
@@ -179,6 +187,8 @@ export default function App() {
               )
             }
           />
+          {/* Also reachable at brikoh.com/#/careers for previews and links. */}
+          <Route path="/careers" element={<Careers />} />
           <Route path="/handoff" element={<Handoff />} />
           <Route
             path="/auth"
