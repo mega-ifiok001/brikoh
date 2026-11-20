@@ -1,3 +1,4 @@
+
 import { useState, type FormEvent } from "react";
 import { Button, Field, Icon, Input } from "../../components/ui";
 import { errMsg } from "../lib/adminApi";
@@ -7,6 +8,7 @@ export default function Login() {
   const { signIn } = useAdmin();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [totp, setTotp] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -36,8 +38,12 @@ export default function Login() {
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-ink-900 text-brand-500">
             <Icon name="shield" size={24} />
           </span>
-          <h1 className="mt-4 text-2xl font-extrabold tracking-tight">Brikoh Admin</h1>
-          <p className="mt-1 text-sm text-ink-400">Platform staff only. Every session requires two-factor.</p>
+          <h1 className="mt-4 text-2xl font-extrabold tracking-tight">
+            Brikoh Admin
+          </h1>
+          <p className="mt-1 text-sm text-ink-400">
+            Platform staff only. Every session requires two-factor.
+          </p>
         </div>
 
         <form onSubmit={submit} className="card anim-rise space-y-4 p-5">
@@ -52,16 +58,34 @@ export default function Login() {
               placeholder="you@brikoh.com"
             />
           </Field>
+
           <Field label="Password">
-            <Input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="pr-12"
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-900"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+              >
+                <Icon name={showPassword ? "eye-off" : "eye"} size={18} />
+              </button>
+            </div>
           </Field>
-          <Field label="Authenticator code" hint="6-digit code from your authenticator app">
+
+          <Field
+            label="Authenticator code"
+            hint="6-digit code from your authenticator app"
+          >
             <Input
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -69,7 +93,9 @@ export default function Login() {
               maxLength={6}
               required
               value={totp}
-              onChange={(e) => setTotp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) =>
+                setTotp(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
               placeholder="000000"
               className="text-center font-mono text-lg tracking-[0.4em]"
             />
