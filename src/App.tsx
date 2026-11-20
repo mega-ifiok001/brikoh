@@ -26,6 +26,7 @@ import StoreView from "./pages/StoreView";
 import Tickets from "./pages/Tickets";
 import PublicInvoicePage from "./pages/PublicInvoicePage";
 import Careers from "./pages/Careers";
+import AdminApp from "./admin/AdminApp";
 
 // ── Cross-subdomain config ────────────────────────────────────────────────
 // The SAME build is deployed to brikoh.com, dashboard.brikoh.com, careers.brikoh.com
@@ -38,7 +39,7 @@ const MAIN_HOST = "brikoh.com"; // change to "www.brikoh.com" if that's your can
 
 // Hostnames that are NOT a merchant storefront subdomain, even though they
 // match "something.brikoh.com".
-const RESERVED_SUBDOMAINS = new Set(["dashboard", "www", "api", "app", "careers"]);
+const RESERVED_SUBDOMAINS = new Set(["dashboard", "www", "api", "app", "careers", "admin"]);
 
 const isDashboardHost = () =>
   typeof window !== "undefined" && window.location.hostname === DASHBOARD_HOST;
@@ -190,6 +191,10 @@ export default function App() {
           {/* Also reachable at brikoh.com/#/careers for previews and links. */}
           <Route path="/careers" element={<Careers />} />
           <Route path="/handoff" element={<Handoff />} />
+          {/* Preview of the platform admin panel at brikoh.com/#/admin (localhost,
+              Vercel previews). In production it is served at admin.brikoh.com
+              — see main.tsx. Access is enforced by the API, not by hiding this. */}
+          <Route path="/admin/*" element={<AdminApp base="/admin" />} />
           <Route
             path="/auth"
             element={
