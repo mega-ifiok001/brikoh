@@ -5,7 +5,7 @@ import App from "./App";
 import AdminRoot from "./admin/AdminRoot";
 
 // admin.brikoh.com serves the platform admin panel instead of the public app.
-const ADMIN_HOST = "admin.brikoh.com";
+const ADMIN_HOST = "manage.brikoh.com";
 const isAdminHost = window.location.hostname.toLowerCase() === ADMIN_HOST;
 
 if (window.location.pathname !== "/" && !window.location.hash) {

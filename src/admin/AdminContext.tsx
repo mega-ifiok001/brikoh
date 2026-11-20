@@ -23,7 +23,7 @@ interface Ctx {
   can: (key: string) => boolean;
   signIn: (email: string, password: string, totp: string) => Promise<void>;
   signOut: () => Promise<void>;
-  /** Build an in-app path that works both on admin.brikoh.com ("") and the /admin preview. */
+  /** Build an in-app path that works both on manage.brikoh.com ("") and the /admin preview. */
   p: (path: string) => string;
 }
 
