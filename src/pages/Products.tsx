@@ -2206,6 +2206,7 @@ export default function Products() {
       >
         <div className="flex gap-2">
           <Button
+            data-tour-id="products-import"
             variant="outline"
             icon="upload"
             onClick={openImport}
@@ -2214,6 +2215,7 @@ export default function Products() {
           </Button>
 
           <Button
+            data-tour-id="products-new"
             icon="plus"
             onClick={openCreate}
           >

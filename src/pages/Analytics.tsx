@@ -182,7 +182,7 @@ export default function Analytics() {
   return (
     <div>
       <PageHead title="Analytics" sub={`${fd(start)} → ${fd(end)}`}>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div data-tour-id="analytics-range" className="flex flex-wrap items-center gap-1.5">
           {planTier && <Badge tone="brand">{titleCase(planTier)}</Badge>}
           {RANGES.map((r) => (
             <button
@@ -198,6 +198,7 @@ export default function Analytics() {
       </PageHead>
 
       <Tabs
+        tourId="analytics-tabs"
         tabs={[
           { id: "overview", label: "Overview" },
           { id: "trends", label: "Trends" },

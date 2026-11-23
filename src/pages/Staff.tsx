@@ -348,6 +348,7 @@ export default function Staff() {
                 </Select>
               </Field>
               <Button
+                data-tour-id="staff-send-invite"
                 className="w-full"
                 loading={invBusy}
                 icon="send"

@@ -131,18 +131,19 @@ export default function Overview() {
       >
         {access.can("pos") && (
           <Link to="/dashboard/pos">
-            <Button icon="pos">New sale</Button>
+            <Button data-tour-id="overview-new-sale" icon="pos">New sale</Button>
           </Link>
         )}
         {access.can("products") && (
           <Link to="/dashboard/products?new=1">
-            <Button variant="outline" icon="plus">
+            <Button data-tour-id="overview-new-product" variant="outline" icon="plus">
               Add product
             </Button>
           </Link>
         )}
         {hasStorefront && (
           <Button
+            data-tour-id="overview-storefront"
             variant="dark"
             icon="external"
             onClick={() => window.open(`${location.origin}${location.pathname}#/s/${store.subdomain}`, "_blank")}

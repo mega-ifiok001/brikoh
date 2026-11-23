@@ -283,7 +283,7 @@ export default function Orders() {
       />
 
       {/* Filters */}
-      <div className="mb-4 space-y-3">
+      <div data-tour-id="orders-filters" className="mb-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <SearchInput
             value={q}

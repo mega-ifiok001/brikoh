@@ -218,6 +218,7 @@ const monthLabel = from.toLocaleDateString("en-GB", {
       >
         <div className="flex items-center gap-1 rounded-xl border border-cream-300 bg-white p-1">
           <Button
+            data-tour-id="expenses-period"
             variant="ghost"
             size="sm"
             icon="chevronLeft"
@@ -234,7 +235,7 @@ const monthLabel = from.toLocaleDateString("en-GB", {
             aria-label="Next month"
           />
         </div>
-        <Button icon="plus" onClick={openCreate}>
+        <Button data-tour-id="expenses-new" icon="plus" onClick={openCreate}>
           Record expense
         </Button>
       </PageHead>

@@ -1,10 +1,12 @@
 import { useEffect, type ReactNode } from "react";
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
+import { ProductTourProvider } from "./context/ProductTourContext";
 import { PageLoader, ToastHost } from "./components/ui";
 import Layout from "./components/Layout";
 import Landing from "./pages/Landing";
-import { AcceptInvitePage, AuthPage, VerifyPage } from "./pages/AuthPages";
+import { AcceptInvitePage, AuthPage, ForgotPasswordPage, ResetPasswordPage, VerifyPage } from "./pages/AuthPages";
 import Onboarding from "./pages/Onboarding";
 import Overview from "./pages/Overview";
 import POS from "./pages/POS";
@@ -163,11 +165,13 @@ export default function App() {
   const storeSubdomain = getStoreSubdomain();
 
   return (
-    <AuthProvider>
-      <HashRouter>
-        <ScrollToTop />
-        <ToastHost />
-        <Routes>
+    <ThemeProvider>
+      <ProductTourProvider>
+        <AuthProvider>
+          <HashRouter>
+            <ScrollToTop />
+            <ToastHost />
+            <Routes>
           <Route
             path="/"
             element={
@@ -204,6 +208,8 @@ export default function App() {
             }
           />
           <Route path="/verify" element={<VerifyPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
           {/* Public, unauthenticated invoice view — the link merchants copy
               from the invoice detail page (`shareUrl`) and hand to their
@@ -255,11 +261,14 @@ export default function App() {
             <Route path="staff" element={<Staff />} />
             <Route path="tickets" element={<Tickets />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="settings/display" element={<SettingsPage initialTab="display" />} />
             <Route path="settings/billing" element={<SettingsPage initialTab="plan" />} />
           </Route>
           <Route path="*" element={<NotFound />} />
-        </Routes>
-      </HashRouter>
-    </AuthProvider>
+            </Routes>
+          </HashRouter>
+        </AuthProvider>
+      </ProductTourProvider>
+    </ThemeProvider>
   );
 }

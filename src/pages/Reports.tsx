@@ -214,7 +214,7 @@ export default function Reports() {
         title="Reports"
         sub={`Profit & loss · ${periodLabel}${rangeLabel ? ` · ${rangeLabel}` : ""}`}
       >
-        <div className="flex flex-wrap gap-1.5">
+        <div data-tour-id="reports-period" className="flex flex-wrap gap-1.5">
           {PERIODS.map((p) => (
             <button
               key={p.key}

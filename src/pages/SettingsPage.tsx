@@ -24,6 +24,8 @@ import {
   Toggle,
   toast,
 } from "../components/ui";
+import ThemeSwitch from "../components/ThemeSwitch";
+import { useProductTour } from "../context/ProductTourContext";
 
 const BUSINESS_TYPES = [
   "RETAIL",
@@ -53,7 +55,17 @@ const ACCENT_SWATCH = [
 
 export default function SettingsPage({ initialTab }: { initialTab?: string }) {
   const { refresh } = useAuth();
-  const [tab, setTab] = useState(initialTab === "plan" ? "plan" : "business");
+  const [tab, setTab] = useState(() =>
+    ["business", "storefront", "bank", "notifications", "display", "account", "plan"].includes(initialTab ?? "")
+      ? initialTab!
+      : "business"
+  );
+
+  useEffect(() => {
+    if (initialTab && ["business", "storefront", "bank", "notifications", "display", "account", "plan"].includes(initialTab)) {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
 
   return (
     <div>
@@ -62,11 +74,13 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
         sub="Your account, your store, and how Brikoh pings you."
       />
       <Tabs
+        tourId="settings-tabs"
         tabs={[
           { id: "business", label: "Business" },
           { id: "storefront", label: "Storefront" },
           { id: "bank", label: "Bank accounts" },
           { id: "notifications", label: "Alerts" },
+          { id: "display", label: "Display" },
           { id: "account", label: "Account & password" },
           { id: "plan", label: "Plan" },
         ]}
@@ -78,8 +92,40 @@ export default function SettingsPage({ initialTab }: { initialTab?: string }) {
       {tab === "storefront" && <StorefrontTab />}
       {tab === "bank" && <BankAccountsTab />}
       {tab === "notifications" && <AlertsTab />}
+      {tab === "display" && <DisplayTab />}
       {tab === "account" && <AccountTab />}
       {tab === "plan" && <PlanTab />}
+    </div>
+  );
+}
+
+function DisplayTab() {
+  const { setMode: setTourMode } = useProductTour();
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <div className="card anim-rise p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="font-display text-lg font-extrabold">Appearance</h2>
+            <p className="mt-1 text-sm text-ink-500">Choose the light or dark theme for your dashboard.</p>
+          </div>
+          <ThemeSwitch showLabel />
+        </div>
+      </div>
+      <div className="card anim-rise flex flex-wrap items-center justify-between gap-4 p-6">
+        <div>
+          <h2 className="font-display text-lg font-extrabold">Explore Brikoh</h2>
+          <p className="mt-1 text-sm text-ink-500">Review the tour of sales, inventory, customers, and more.</p>
+        </div>
+        <Button
+          variant="outline"
+          icon="grid"
+          onClick={() => setTourMode("tour")}
+        >
+          Start tour
+        </Button>
+      </div>
     </div>
   );
 }

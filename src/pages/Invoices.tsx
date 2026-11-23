@@ -422,12 +422,12 @@ export default function Invoices() {
         title="Invoices"
         sub="Money owed, tracked from draft to paid — with a proper payment ledger."
       >
-        <Button icon="plus" onClick={openCreate}>
+        <Button data-tour-id="invoices-new" icon="plus" onClick={openCreate}>
           New invoice
         </Button>
       </PageHead>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div data-tour-id="invoices-filters" className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-1.5">
           {STATUSES.map((s) => (
             <button

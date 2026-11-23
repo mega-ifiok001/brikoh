@@ -514,7 +514,7 @@ export default function POS() {
               </div>
             </div>
 
-            <Button size="lg" className="w-full" loading={busy} disabled={!canSubmit} icon="check" onClick={charge}>
+            <Button data-tour-id="pos-complete-sale" size="lg" className="w-full" loading={busy} disabled={!canSubmit} icon="check" onClick={charge}>
               {method === "CARD" ? "Record card sale" : "Complete sale"}
             </Button>
           </div>

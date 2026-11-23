@@ -210,10 +210,11 @@ export default function Wallet() {
         title="Wallet"
         sub="Online sales paid through Paystack land here. Cash, transfer and credit sales never touch this balance."
       >
-        <Button variant="outline" icon="building" onClick={() => setAcctOpen(true)}>
+        <Button data-tour-id="wallet-bank-account" variant="outline" icon="building" onClick={() => setAcctOpen(true)}>
           Bank account
         </Button>
         <Button
+          data-tour-id="wallet-withdraw"
           icon="banknote"
           disabled={rawNum(available) < 100}
           onClick={openWithdraw}

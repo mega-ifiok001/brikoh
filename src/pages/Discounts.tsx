@@ -228,7 +228,7 @@ const submit = async () => {
         title="Discounts"
         sub="Cart-wide promos and coupon codes your customers can use at checkout."
       >
-        <Button icon="plus" onClick={openCreate}>
+        <Button data-tour-id="discounts-new" icon="plus" onClick={openCreate}>
           New discount
         </Button>
       </PageHead>

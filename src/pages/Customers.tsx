@@ -238,7 +238,7 @@ export default function Customers() {
         title="Customers"
         sub="Your address book — walk-ins, regulars and credit accounts."
       >
-        <Button icon="plus" onClick={openCreate}>
+        <Button data-tour-id="customers-new" icon="plus" onClick={openCreate}>
           Add customer
         </Button>
       </PageHead>

@@ -34,6 +34,7 @@ export default function Purchases() {
         sub="Suppliers, purchase orders and goods receiving — stock goes in through here."
       />
       <Tabs
+        tourId="purchase-tabs"
         tabs={[
           { id: "pos", label: "Purchase orders" },
           { id: "suppliers", label: "Suppliers" },
@@ -890,7 +891,7 @@ function POs({ currency }: { currency: string }) {
             ))}
           </Select>
 
-          <Button icon="plus" onClick={openCreate}>
+          <Button data-tour-id="purchases-new" icon="plus" onClick={openCreate}>
             New purchase order
           </Button>
         </div>

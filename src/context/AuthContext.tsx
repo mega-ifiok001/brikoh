@@ -83,7 +83,7 @@ interface AuthCtxType {
     lastName: string;
     phone: string;
   }) => Promise<Me>;
-  verifyEmail: (token: string) => Promise<Me>;
+  verifyEmail: (email: string, code: string) => Promise<Me>;
   resendVerification: () => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -179,8 +179,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
  const verifyEmail = useCallback(
-  async (token: string) => {
-    const res = await api.publicPost("/api/public/auth/verify", { token });
+ async (email: string, code: string) => {
+    const res = await api.publicPost("/api/public/auth/verify", { email, code });
 
     const t = extractTokens(res);
 

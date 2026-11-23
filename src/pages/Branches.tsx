@@ -233,10 +233,10 @@ export default function Branches() {
         title="Branches"
         sub="Shops, warehouses and stalls where your stock lives. Checkout and new product stock use the default branch."
       >
-        <Button variant="outline" icon="refresh" onClick={() => openTransfer()}>
+        <Button data-tour-id="branches-transfer" variant="outline" icon="refresh" onClick={() => openTransfer()}>
           Transfer stock
         </Button>
-        <Button icon="plus" onClick={openCreate}>
+        <Button data-tour-id="branches-new" icon="plus" onClick={openCreate}>
           New branch
         </Button>
       </PageHead>

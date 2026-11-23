@@ -6,6 +6,9 @@ import { ago, cls, fd, initialsOf, titleCase } from "../lib/format";
 import { Badge, CopyBtn, Icon, toast } from "./ui";
 import { getAccess, type Feature } from "../lib/access";
 import AnnouncementsBanner from "./AnnouncementsBanner";
+import ThemeSwitch from "./ThemeSwitch";
+import ProductTour from "./ProductTour";
+import { useProductTour } from "../context/ProductTourContext";
 
 interface NavItem {
   to: string;
@@ -63,7 +66,7 @@ const NAV: NavGroup[] = [
   },
 ];
 
-function Brand({ light }: { light?: boolean }) {
+function Brand() {
   return (
     <Link to="/dashboard" className="flex items-center gap-2.5">
      <img src="/logo-white.png" width={100} alt="" />
@@ -143,11 +146,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <div className="px-5 pb-5 pt-6">
-        <Brand light />
+        <Brand />
       </div>
       <nav className="scrollbar-slim flex-1 space-y-5 overflow-y-auto px-3 pb-4">
         {visibleNav.map((g) => (
-          <div key={g.title}>
+          <div key={g.title} data-tour-id={`nav-group-${g.title.toLowerCase()}`}>
             <p className="px-2.5 pb-1.5 text-[10px] font-extrabold uppercase tracking-[0.14em] text-ink-300/70">
               {g.title}
             </p>
@@ -157,6 +160,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   key={it.to}
                   to={`/dashboard${it.to}`}
                   end={it.to === ""}
+                  data-tour-id={`nav-${it.feature}`}
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     cls(
@@ -294,6 +298,7 @@ function NotificationsBell() {
   return (
     <div className="relative" ref={ref}>
       <button
+        data-tour-id="header-notifications"
         onClick={openPanel}
         className="relative rounded-lg p-2 text-ink-500 transition-colors hover:bg-cream-100 hover:text-ink-900"
         aria-label="Notifications"
@@ -350,6 +355,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const [mobileNav, setMobileNav] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
+  const { mode: tourMode, target: tourTarget, setMode: setTourMode } = useProductTour();
   const userRef = useRef<HTMLDivElement>(null);
   const store = me.store || {};
   const currency: string = store.currency || "NGN";
@@ -360,6 +366,50 @@ export default function Layout() {
     [account.firstName, account.lastName].filter(Boolean).join(" ") ||
     account.email ||
     "Account";
+
+  useEffect(() => {
+    const email = String(account.email || "").toLowerCase();
+    if (!email) return;
+
+    const pendingKey = `brikoh:productTourPending:${email}`;
+    let wasPending = false;
+    try {
+      wasPending = localStorage.getItem(pendingKey) === "true";
+    } catch {
+      // Try session storage below when local storage is unavailable.
+    }
+    try {
+      wasPending = wasPending || sessionStorage.getItem(pendingKey) === "true";
+    } catch {
+      // If both stores are unavailable, the tour remains available from Settings.
+    }
+    if (!wasPending) return;
+
+    try {
+      localStorage.removeItem(pendingKey);
+    } catch {
+      // Ignore unavailable storage.
+    }
+    try {
+      sessionStorage.removeItem(pendingKey);
+    } catch {
+      // Ignore unavailable storage.
+    }
+
+    const accountKey = `brikoh:productTourSeen:${email}`;
+    try {
+      if (localStorage.getItem(accountKey) === "true") return;
+      localStorage.setItem(accountKey, "true");
+    } catch {
+      // The session marker was already consumed, so this won't repeat this visit.
+    }
+    setTourMode("prompt");
+  }, [account.email, setTourMode]);
+
+  useEffect(() => {
+    const isMobile = window.matchMedia("(max-width: 1023px)").matches;
+    setMobileNav(tourMode === "tour" && isMobile && !!tourTarget?.startsWith("nav-"));
+  }, [tourMode, tourTarget]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -374,7 +424,7 @@ export default function Layout() {
     : "";
 
   return (
-    <div className="flex min-h-screen">
+    <div className="dashboard-theme flex min-h-screen bg-cream-50 text-ink-900 transition-colors">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 bg-ink-900 lg:block">
         <SidebarContent />
@@ -401,7 +451,7 @@ export default function Layout() {
             <Icon name="menu" size={20} />
           </button>
 
-          <div className="hidden items-center gap-2 sm:flex">
+          <div data-tour-id="header-store" className="hidden items-center gap-2 sm:flex">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-900 text-cream-50">
               <Icon name="store" size={15} />
             </span>
@@ -423,9 +473,11 @@ export default function Layout() {
                 View storefront
               </button>
             )}
+            <ThemeSwitch />
             <NotificationsBell />
             <div className="relative" ref={userRef}>
               <button
+                data-tour-id="header-account"
                 onClick={() => setUserMenu((o) => !o)}
                 className="flex items-center gap-2 rounded-lg p-1.5 pr-2 hover:bg-cream-100"
                 aria-label="Account menu"
@@ -457,6 +509,13 @@ export default function Layout() {
                         <CopyBtn text={previewUrl} label="Copy" />
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => { setUserMenu(false); setTourMode("tour"); }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-bold text-ink-700 hover:bg-cream-100"
+                    >
+                      <Icon name="info" size={15} /> Take a tour
+                    </button>
                     {canSettings && (
                       <Link
                         to="/dashboard/settings"
@@ -495,6 +554,7 @@ export default function Layout() {
           Brikoh · all-in-one commerce for your store · money in {currency}
         </footer>
       </div>
+      <ProductTour />
     </div>
   );
 }

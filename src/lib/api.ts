@@ -2,7 +2,7 @@
 // Handles bearer auth, one-shot refresh on 401, cold-start retries
 // (Render free tier sleeps) and normalized error objects.
 
-export const API_BASE = "https://oja-r4vs.onrender.com";
+export const API_BASE = "https://brikoh-backend.onrender.com";
 
 const AT_KEY = "brikoh.at";
 const RT_KEY = "brikoh.rt";

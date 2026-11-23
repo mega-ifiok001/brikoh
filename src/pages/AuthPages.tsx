@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api, extractTokens, setTokens } from "../lib/api";
 import { Button, Field, Icon, Input, toast } from "../components/ui";
@@ -10,12 +10,12 @@ const HERO_IMG =
 // Contract: 7-17 chars of digits, with optional leading +, spaces, dashes, parens.
 const PHONE_RE = /^\+?[\d\s\-()]{7,17}$/;
 
-// Module-level (not component-level) set of tokens we've already tried to
+// Module-level (not component-level) set of verification codes we've already tried to
 // verify. React 18 StrictMode mounts, unmounts, and remounts components in
 // dev, which resets any `useRef` guard inside the component — but this Set
-// lives outside the component and survives that remount, so a single token
+// lives outside the component and survives that remount, so a single code
 // only ever gets submitted once per page load, even in StrictMode.
-const verifiedTokens = new Set<string>();
+const verifiedCodes = new Set<string>();
 
 function AuthShell({ children, headline, sub }: { children: ReactNode; headline: string; sub: string }) {
   return (
@@ -95,6 +95,79 @@ function PasswordInput({ className, ...rest }: PasswordInputProps) {
   );
 }
 
+function CodeDigitsInput({
+  label,
+  value,
+  onChange,
+  onComplete,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onComplete?: (code: string) => void;
+  disabled?: boolean;
+}) {
+  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  return (
+    <Field label={label}>
+      <div className="flex justify-between gap-2" role="group" aria-label={`6-digit ${label.toLowerCase()}`}>
+        {Array.from({ length: 6 }, (_, index) => (
+          <input
+            key={index}
+            ref={(element) => { inputRefs.current[index] = element; }}
+            className="inp h-12 w-11 px-0 text-center font-mono text-lg font-bold tracking-normal sm:w-12"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={1}
+            value={value[index] || ""}
+            onChange={(e) => {
+              const entered = e.target.value.replace(/\D/g, "");
+              if (entered.length > 1) {
+                const digits = entered.slice(0, 6);
+                onChange(digits);
+                inputRefs.current[Math.min(digits.length, 5)]?.focus();
+                if (digits.length === 6) onComplete?.(digits);
+                return;
+              }
+
+              const digit = entered.slice(-1);
+              const digits = Array.from({ length: 6 }, (_, position) => value[position] || "");
+              digits[index] = digit;
+              const completeCode = digits.join("");
+              onChange(completeCode);
+              if (digit && index < 5) inputRefs.current[index + 1]?.focus();
+              if (completeCode.length === 6) onComplete?.(completeCode);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Backspace" && !value[index] && index > 0) {
+                inputRefs.current[index - 1]?.focus();
+              } else if (e.key === "ArrowLeft" && index > 0) {
+                inputRefs.current[index - 1]?.focus();
+              } else if (e.key === "ArrowRight" && index < 5) {
+                inputRefs.current[index + 1]?.focus();
+              }
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const digits = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+              onChange(digits);
+              inputRefs.current[Math.min(digits.length, 5)]?.focus();
+              if (digits.length === 6) onComplete?.(digits);
+            }}
+            aria-label={`${label} digit ${index + 1}`}
+            autoComplete={index === 0 ? "one-time-code" : "off"}
+            disabled={disabled}
+            required
+          />
+        ))}
+      </div>
+    </Field>
+  );
+}
+
 /* ------------------------------- Login / Register ------------------------------ */
 
 export function AuthPage() {
@@ -139,6 +212,15 @@ export function AuthPage() {
         afterAuth(me);
       } else {
         const me = await register({ email, password, confirmPassword: confirm, firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim() });
+        try {
+          localStorage.setItem(`brikoh:productTourPending:${email.toLowerCase()}`, "true");
+        } catch {
+          try {
+            sessionStorage.setItem(`brikoh:productTourPending:${email.toLowerCase()}`, "true");
+          } catch {
+            // The tour can still be started later from Settings → Display.
+          }
+        }
         toast.success("Account created — check your inbox.");
         const pendingPlan =
           params.get("plan") || sessionStorage.getItem("brikoh.pendingPlan");
@@ -217,6 +299,13 @@ export function AuthPage() {
             required
           />
         </Field>
+        {mode === "login" && (
+          <div className="-mt-2 text-right">
+            <Link to="/forgot-password" className="text-sm font-bold text-brand-600 hover:underline">
+              Forgot password?
+            </Link>
+          </div>
+        )}
         {mode === "register" && (
           <Field label="Confirm password">
             <PasswordInput value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Same password again" autoComplete="new-password" required />
@@ -239,6 +328,204 @@ export function AuthPage() {
   );
 }
 
+/* ---------------------------- Password recovery ---------------------------- */
+
+export function ForgotPasswordPage() {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      await api.publicPost("/api/public/auth/forgot-password", { email: email.trim() });
+      navigate("/reset-password", { state: { email: email.trim() } });
+    } catch (err: any) {
+      setError(err?.message || "Couldn't send a reset code. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AuthShell
+      headline="Forgot your password?"
+      sub="Enter the email address linked to your Brikoh account and we'll send you a reset code."
+    >
+      <ErrorBanner msg={error} />
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Email">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@store.com"
+            autoComplete="email"
+            required
+          />
+        </Field>
+        <Button type="submit" size="lg" loading={busy} className="w-full">
+          Send reset code
+        </Button>
+      </form>
+      <p className="mt-5 text-center text-sm">
+        <Link to="/auth" className="font-bold text-brand-600 hover:underline">
+          Back to sign in
+        </Link>
+      </p>
+    </AuthShell>
+  );
+}
+
+export function ResetPasswordPage() {
+  const location = useLocation();
+  const email = (location.state as { email?: string } | null)?.email || "";
+  const [code, setCode] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [step, setStep] = useState<"code" | "password">("code");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const verifyInFlight = useRef(false);
+
+  const verifyResetCode = async (submittedCode: string) => {
+    if (verifyInFlight.current) return;
+    if (!email.trim()) return setError("Enter the email address that received the reset code.");
+    if (!submittedCode.trim()) return setError("Enter the reset code from your email.");
+
+    verifyInFlight.current = true;
+    setError("");
+    setBusy(true);
+    try {
+      const result = await api.publicPost("/api/public/auth/reset-password/verify", {
+        email: email.trim(),
+        code: submittedCode.trim(),
+      });
+      const grant = result?.resetToken ?? result?.data?.resetToken;
+      if (typeof grant !== "string" || !grant) {
+        throw new Error("Couldn't confirm the reset code. Request a new one and try again.");
+      }
+      setResetToken(grant);
+      setStep("password");
+    } catch (err: any) {
+      const message = err?.message || "Couldn't confirm the reset code. Try again.";
+      setError(err?.code === "OTP_INVALID" ? "Invalid code" : message);
+    } finally {
+      verifyInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!email.trim()) return setError("Enter the email address that received the reset code.");
+    if (!code.trim()) return setError("Enter the reset code from your email.");
+    if (step === "code") {
+      await verifyResetCode(code);
+      return;
+    }
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      return setError("Password must be at least 8 characters and include at least one letter and one number.");
+    }
+    if (password !== confirm) return setError("Passwords don't match.");
+    setBusy(true);
+    try {
+      await api.publicPost("/api/public/auth/reset-password", {
+        resetToken,
+        newPassword: password,
+        confirmPassword: confirm,
+      });
+      setDone(true);
+    } catch (err: any) {
+      setError(err?.message || "That reset code may be invalid or expired. Request a new one.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AuthShell
+      headline={done ? "Password updated" : step === "code" ? "Confirm your reset code" : "Choose a new password"}
+      sub={done
+        ? "Your password has been changed. Sign in with your new password."
+        : step === "code"
+          ? "Enter the reset code sent to your email to continue."
+          : "Choose a new password for your Brikoh account."}
+    >
+      {done ? (
+        <Link to="/auth" className="inline-block w-full rounded-xl bg-brand-500 px-4 py-3 text-center text-sm font-extrabold text-white transition hover:bg-brand-600">
+          Back to sign in
+        </Link>
+      ) : (
+        <>
+          <ErrorBanner msg={error} />
+          {!email && step === "code" ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-ink-500">Request a reset code first to continue.</p>
+              <Link to="/forgot-password" className="inline-block text-sm font-bold text-brand-600 hover:underline">
+                Request a reset code
+              </Link>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="space-y-4">
+              {step === "code" ? (
+                <>
+                  <CodeDigitsInput
+                    label="Reset code"
+                    value={code}
+                    onChange={setCode}
+                    onComplete={(enteredCode) => { void verifyResetCode(enteredCode); }}
+                    disabled={busy}
+                  />
+                  <Button type="submit" size="lg" loading={busy} className="w-full">
+                    Continue
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-ink-500">Resetting password for <strong>{email}</strong></p>
+                  <Field label="New password" hint="Use at least 8 characters, including at least one letter and one number.">
+                    <PasswordInput
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      autoComplete="new-password"
+                      required
+                    />
+                  </Field>
+                  <Field label="Confirm new password">
+                    <PasswordInput
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      placeholder="Enter it again"
+                      autoComplete="new-password"
+                      required
+                    />
+                  </Field>
+                  <Button type="submit" size="lg" loading={busy} className="w-full">
+                    Set new password
+                  </Button>
+                </>
+              )}
+            </form>
+          )}
+          <p className="mt-5 text-center text-sm">
+            <Link to="/forgot-password" className="font-bold text-brand-600 hover:underline">
+              Request a new reset code
+            </Link>
+          </p>
+        </>
+      )}
+    </AuthShell>
+  );
+}
+
 /* ------------------------------------ Verify ---------------------------------- */
 
 export function VerifyPage() {
@@ -247,11 +534,12 @@ export function VerifyPage() {
   const navigate = useNavigate();
   const email = params.get("email") || me?.account?.email || "";
 
-  const [token, setToken] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const verifyInFlight = useRef(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -259,12 +547,15 @@ export function VerifyPage() {
     return () => clearInterval(t);
   }, [cooldown]);
 
-  const handleVerify = async (t: string) => {
-    if (!t.trim()) return setError("Paste the token from your email first.");
+  const handleVerify = async (c: string) => {
+    if (verifyInFlight.current) return;
+    if (!email.trim()) return setError("Enter the email address for this account first.");
+    if (!c.trim()) return setError("Enter the verification code from your email first.");
+    verifyInFlight.current = true;
     setBusy(true);
     setError("");
     try {
-      const me2 = await verifyEmail(t.trim());
+      const me2 = await verifyEmail(email.trim(), c.trim());
       setDone(true);
       toast.success("Email verified.");
       const pendingPlan =
@@ -284,23 +575,29 @@ export function VerifyPage() {
         700
       );
     } catch (e: any) {
-      setError(e?.message || "That token didn't work.");
+      const message = e?.message || "";
+      const status = e?.status;
+      const codeWasRejected =
+        [400, 401, 403, 422].includes(status) ||
+        /(?:invalid|incorrect|expired).*(?:code|verification)|(?:code|verification).*(?:invalid|incorrect|expired)/i.test(message);
+      setError(codeWasRejected ? "Invalid code" : message || "Couldn't verify the code. Try again.");
       setDone(false);
     } finally {
+      verifyInFlight.current = false;
       setBusy(false);
     }
   };
 
   useEffect(() => {
-    const t = params.get("token");
+    const c = params.get("code");
     // Guard against React 18 StrictMode's dev-only mount → unmount →
     // remount cycle firing this effect (and the verify request) twice
-    // for the same token. A useRef guard resets on remount because it's
+    // for the same code. A useRef guard resets on remount because it's
     // instance state; this module-level Set does not.
-    if (t && !verifiedTokens.has(t)) {
-      verifiedTokens.add(t);
-      setToken(t);
-      handleVerify(t);
+    if (c && !verifiedCodes.has(c)) {
+      verifiedCodes.add(c);
+      setCode(c);
+      handleVerify(c);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -320,8 +617,8 @@ export function VerifyPage() {
       headline={done ? "Verified" : "Verify your email"}
       sub={
         email
-          ? `We sent a verification token to ${email}.`
-          : "Paste the verification token from your email."
+          ? `We sent a verification code to ${email}.`
+          : "Enter the verification code from your email."
       }
     >
       {done ? (
@@ -338,19 +635,18 @@ export function VerifyPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              handleVerify(token);
+              handleVerify(code);
             }}
             className="space-y-4"
           >
-            <Field label="Verification token">
-              <Input
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="Paste the token from your email"
-                className="text-center font-mono tracking-widest"
-              />
-            </Field>
-            <Button type="submit" size="lg" loading={busy} className="w-full" disabled={!isAuthed && !email && !token}>
+            <CodeDigitsInput
+              label="Verification code"
+              value={code}
+              onChange={setCode}
+              onComplete={(enteredCode) => { void handleVerify(enteredCode); }}
+              disabled={busy || done}
+            />
+            <Button type="submit" size="lg" loading={busy} className="w-full" disabled={!isAuthed && !email && !code}>
               Verify email
             </Button>
           </form>

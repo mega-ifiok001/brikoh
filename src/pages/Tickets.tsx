@@ -239,7 +239,7 @@ export default function Tickets() {
         title="Support tickets"
         sub="Conversations with the Brikoh support team."
       >
-        <Button icon="plus" onClick={() => setNewOpen(true)}>
+        <Button data-tour-id="tickets-new" icon="plus" onClick={() => setNewOpen(true)}>
           New ticket
         </Button>
       </PageHead>

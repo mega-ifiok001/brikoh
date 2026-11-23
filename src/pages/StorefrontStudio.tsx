@@ -35,6 +35,7 @@ export default function StorefrontStudio() {
         sub="Your public shop page — the template, the branding, the promos."
       />
       <Tabs
+        tourId="storefront-tabs"
         tabs={[
           { id: "storefront", label: "Theme & branding" },
           { id: "campaigns", label: "Campaigns" },
