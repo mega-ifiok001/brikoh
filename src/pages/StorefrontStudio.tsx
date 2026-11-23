@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { asList, cls, fd, rawNum, titleCase } from "../lib/format";
 import DeliveryOptions from "./DeliveryOptions";
+import StorefrontThemePreview from "../components/StorefrontThemePreview";
 import {
   Badge,
   Button,
@@ -367,58 +368,7 @@ function Studio({
                       style={{ animationDelay: `${i * 50}ms` }}
                     >
                       <div className="relative h-36">
-                        {t.previewUrl ? (
-                          <img
-                            src={t.previewUrl}
-                            alt={t.name}
-                            className="h-full w-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div
-                            className={cls(
-                              "flex h-full w-full flex-col gap-2 p-4",
-                              i === 1
-                                ? "bg-ink-900"
-                                : i === 2
-                                ? "bg-gradient-to-br from-brand-500 to-leaf-500"
-                                : "bg-gradient-to-br from-cream-100 to-brand-50"
-                            )}
-                          >
-                            <div
-                              className={cls(
-                                "h-3 w-2/3 rounded",
-                                i === 0 ? "bg-cream-300" : "bg-white/70"
-                              )}
-                            />
-                            <div
-                              className={cls(
-                                "h-2 w-full rounded",
-                                i === 0 ? "bg-cream-200" : "bg-white/40"
-                              )}
-                            />
-                            <div className="mt-auto grid grid-cols-3 gap-2">
-                              <div
-                                className={cls(
-                                  "h-10",
-                                  i === 0 ? "rounded bg-white" : "rounded-none bg-white/90"
-                                )}
-                              />
-                              <div
-                                className={cls(
-                                  "h-10",
-                                  i === 0 ? "rounded bg-white" : "rounded-none bg-white/90"
-                                )}
-                              />
-                              <div
-                                className={cls(
-                                  "h-10",
-                                  i === 0 ? "rounded bg-white" : "rounded-none bg-white/90"
-                                )}
-                              />
-                            </div>
-                          </div>
-                        )}
+                        <StorefrontThemePreview name={t.name} slug={t.slug} previewUrl={t.previewUrl} />
                         {active && (
                           <span className="absolute left-2 top-2 rounded-full bg-brand-500 px-2.5 py-1 text-[10px] font-extrabold uppercase text-white">
                             Active

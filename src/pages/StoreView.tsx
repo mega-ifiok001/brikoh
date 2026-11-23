@@ -1383,7 +1383,7 @@ export default function StoreView() {
   const heroUnit = heroProd?.unit?.name || "";
 
   return (
-    <div className={cls("min-h-screen", t.pageBg)}>
+    <div className={cls("min-h-screen", t.pageBg, `storefront-theme-${tpl}`)}>
       <style>{`
         @keyframes storefrontShine {
           0% { transform: translateX(-120%) skewX(-12deg); }
@@ -1533,7 +1533,8 @@ export default function StoreView() {
       {/* HERO */}
       <section
         className={cls(
-          "relative overflow-hidden",
+          "storefront-hero relative overflow-hidden",
+          `storefront-hero-${tpl}`,
           tpl === "modern" && "bg-ink-900",
           tpl === "classic" ? "pt-12 pb-10" : "pt-14 pb-14"
         )}
@@ -1556,7 +1557,7 @@ export default function StoreView() {
 
         <div
           className={cls(
-            "mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:gap-14"
+            "storefront-hero-content relative z-10 mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:gap-14"
           )}
         >
           {/* LEFT — copy */}
@@ -2063,6 +2064,7 @@ export default function StoreView() {
   key={p.id}
   className={cls(
     "anim-rise group relative overflow-hidden transition-all duration-300",
+    `storefront-product-card-${tpl}`,
     tpl === "bold"
       ? ""
       : "hover:-translate-y-1.5 hover:shadow-[0_22px_46px_-18px_rgba(0,0,0,0.3)]",

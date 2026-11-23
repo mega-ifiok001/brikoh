@@ -63,11 +63,14 @@ export default function ProductTour() {
         width: Math.min(window.innerWidth - 8, rect.width + pad * 2),
         height: Math.min(window.innerHeight - 8, rect.height + pad * 2),
       };
-      const popoverWidth = Math.min(420, window.innerWidth - 32);
-      let left = rect.right + 16;
-      if (left + popoverWidth > window.innerWidth - 16) left = rect.left - popoverWidth - 16;
-      if (left < 16) left = Math.max(16, (window.innerWidth - popoverWidth) / 2);
-      const top = Math.max(16, Math.min(rect.top - 16, window.innerHeight - 320));
+      const popoverWidth = Math.min(380, window.innerWidth - 32);
+      let left = rect.right + 22;
+      if (left + popoverWidth > window.innerWidth - 16) left = rect.left - popoverWidth - 22;
+      left = Math.max(16, Math.min(left, window.innerWidth - popoverWidth - 16));
+      const estimatedHeight = 280;
+      let top = rect.top - 12;
+      if (top + estimatedHeight > window.innerHeight - 16) top = window.innerHeight - estimatedHeight - 16;
+      if (top < 16) top = Math.max(16, Math.min(window.innerHeight - estimatedHeight - 16, rect.bottom + 18));
 
       setHighlight(nextHighlight);
       setPosition({ left, top, width: popoverWidth });
@@ -112,13 +115,12 @@ export default function ProductTour() {
       {mode === "tour" && highlight ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed z-[90] rounded-xl border-2 border-brand-400 transition-all duration-200"
+          className="tour-spotlight pointer-events-none fixed z-[90] rounded-xl border-2 border-brand-400 transition-all duration-300"
           style={{
             left: highlight.left,
             top: highlight.top,
             width: highlight.width,
             height: highlight.height,
-            boxShadow: "0 0 0 9999px rgba(0,0,0,.64), 0 0 0 5px rgba(236,100,5,.24)",
           }}
         />
       ) : null}
@@ -130,7 +132,8 @@ export default function ProductTour() {
         aria-describedby="product-tour-description"
         aria-modal="true"
         role="dialog"
-        className={`anim-rise fixed z-[100] w-[min(420px,calc(100vw-32px))] rounded-2xl border border-cream-200 bg-white p-6 shadow-2xl sm:p-7 ${mode === "prompt" || !position ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : ""}`}
+        key={mode === "tour" ? `tour-step-${step}` : "tour-prompt"}
+        className={`tour-cloud anim-rise fixed z-[100] w-[min(380px,calc(100vw-32px))] rounded-[2rem] border border-cream-200 bg-white p-6 shadow-2xl sm:p-7 ${mode === "prompt" || !position ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : ""}`}
         style={mode === "tour" && position ? { left: position.left, top: position.top, width: position.width } : undefined}
       >
         <button
@@ -165,8 +168,20 @@ export default function ProductTour() {
             </div>
             <h2 id="product-tour-title" className="mt-4 font-display text-xl font-extrabold">{activeStep.title}</h2>
             <p id="product-tour-description" className="mt-2 text-sm leading-6 text-ink-500">{activeStep.description}</p>
-            <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-cream-200" aria-hidden="true">
-              <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${((step + 1) / TOUR_STEPS.length) * 100}%` }} />
+            <div className="mt-5 flex items-center justify-between gap-4" aria-label={`Step ${step + 1} of ${TOUR_STEPS.length}`}>
+              <div className="flex items-center gap-1.5" aria-label="Jump to a tour step">
+                {TOUR_STEPS.map((tourStep, index) => (
+                  <button
+                    key={tourStep.target}
+                    type="button"
+                    aria-label={`Go to step ${index + 1}: ${tourStep.title}`}
+                    aria-current={index === step ? "step" : undefined}
+                    onClick={() => setStep(index)}
+                    className={`h-2.5 rounded-full transition-all duration-300 ${index === step ? "w-7 bg-brand-500" : "w-2.5 bg-cream-300 hover:bg-brand-300"}`}
+                  />
+                ))}
+              </div>
+              <span className="text-[11px] font-semibold text-ink-400">Tap a dot to jump</span>
             </div>
             <div className="mt-5 flex items-center justify-between gap-3">
               <Button variant="ghost" onClick={close}>Skip tour</Button>

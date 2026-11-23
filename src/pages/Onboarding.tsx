@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { slugify } from "../lib/format";
 import { Button, Field, Icon, Input, Select, toast } from "../components/ui";
+import StorefrontThemePreview from "../components/StorefrontThemePreview";
 import { VerifyPage } from "./AuthPages";
 
 const BUSINESS_TYPES = [
@@ -285,16 +286,8 @@ export default function Onboarding() {
                           : "border-cream-200 hover:border-brand-300"
                       }`}
                     >
-                      <div className="flex h-24 items-center justify-center bg-cream-100">
-                        {t.previewUrl ? (
-                          <img
-                            src={t.previewUrl}
-                            alt={t.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <Icon name="store" size={22} className="text-ink-300" />
-                        )}
+                      <div className="h-28">
+                        <StorefrontThemePreview name={t.name} slug={t.slug} previewUrl={t.previewUrl} />
                       </div>
                       <div className="p-3">
                         <div className="flex items-center gap-1.5">
