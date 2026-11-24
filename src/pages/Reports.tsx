@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api, API_BASE, getAccessToken } from "../lib/api";
-import { asList, cls, fd, pick, rawNum, titleCase } from "../lib/format";
+import { asList, cls, fd, pick, rawNum, titleCase, toISODate } from "../lib/format";
+import DatePicker from "../components/DatePicker";
 import {
   Badge,
   Button,
@@ -10,63 +11,36 @@ import {
   Money,
   PageHead,
   PageLoader,
+  Spinner,
   StatCard,
   toast,
 } from "../components/ui";
 
-const PERIODS = [
-  { key: "week", label: "This week" },
-  { key: "month", label: "This month" },
-  { key: "quarter", label: "This quarter" },
-  { key: "year", label: "This year" },
-] as const;
-
-type PeriodKey = (typeof PERIODS)[number]["key"];
-
-/**
- * Compute the start/end of a period in the user's local time.
- * Week starts on Monday. End is the end of today.
- */
-function rangeFor(period: PeriodKey): { start: string; end: string } {
-  const now = new Date();
-  const start = new Date(now);
-
-  switch (period) {
-    case "week": {
-      const day = now.getDay(); // 0 = Sunday
-      const diff = day === 0 ? 6 : day - 1; // days since Monday
-      start.setDate(now.getDate() - diff);
-      break;
-    }
-    case "month":
-      start.setDate(1);
-      break;
-    case "quarter":
-      start.setMonth(Math.floor(now.getMonth() / 3) * 3, 1);
-      break;
-    case "year":
-      start.setMonth(0, 1);
-      break;
-  }
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
-
-  return { start: start.toISOString(), end: end.toISOString() };
+function dateQuery(date: string): string {
+  // These are calendar dates. Leave timezone-boundary interpretation to the API
+  // so a browser's UTC offset cannot shift a transaction onto another day.
+  return new URLSearchParams({ date }).toString();
 }
 
-function periodQuery(period: PeriodKey): string {
-  const { start, end } = rangeFor(period);
-  const qs = new URLSearchParams({ period, start, end });
-  return qs.toString();
+function displayDate(value: string): string {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return new Date(year, month - 1, day).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function ReportDateField({ date, setDate }: { date: string; setDate: (value: string) => void }) {
+  return <div data-tour-id="reports-period"><DatePicker label="Report date" value={date} onChange={setDate} /></div>;
 }
 
 export default function Reports() {
   const { me } = useAuth();
   const currency: string = (me.store as any)?.currency || "NGN";
 
-  const [period, setPeriod] = useState<PeriodKey>("week");
+  const [date, setDate] = useState(() => toISODate(new Date()));
   const [pnl, setPnl] = useState<any>(null);
   const [byCategory, setByCategory] = useState<any[]>([]);
   const [grandTotal, setGrandTotal] = useState<string>("0.00");
@@ -78,13 +52,17 @@ export default function Reports() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    if (!date) {
+      setError("Choose a report date.");
+      setLoading(false);
+      return;
+    }
     try {
-      const qs = periodQuery(period);
+      const qs = dateQuery(date);
 
-      const [pnlRes, expRes, invRes] = await Promise.all([
+      const [pnlRes, expRes] = await Promise.all([
         api.get(`/api/dashboard/reports/pnl?${qs}`),
-        api.get(`/api/dashboard/reports/expenses-by-category?${qs}`),
-        api.get(`/api/dashboard/reports/inventory-valuation`).catch(() => null),
+        api.get(`/api/dashboard/reports/expenses-by-category?${qs}`).catch(() => null),
       ]);
 
       setPnl(pnlRes);
@@ -92,31 +70,6 @@ export default function Reports() {
         Array.isArray(expRes?.categories) ? expRes.categories : []
       );
       setGrandTotal(expRes?.grandTotal ?? "0.00");
-      setInventory(invRes);
-
-      // Invoice payments received — sum amountPaid across all non-draft invoices.
-      // The invoices list API has no date-range filter, so this is all-time.
-      try {
-        let cursor: string | null = null;
-        let totalInvoicePayments = 0;
-        do {
-          const invQs = new URLSearchParams({ limit: "100" });
-          if (cursor) invQs.set("cursor", cursor);
-          const res: any = await api.get(
-            `/api/dashboard/invoices?${invQs.toString()}`
-          );
-          const list = asList(res, "items", "invoices", "data");
-          for (const inv of list) {
-            if (inv.status === "PAID" || inv.status === "ISSUED") {
-              totalInvoicePayments += rawNum(inv.amountPaid);
-            }
-          }
-          cursor = pick(res, ["nextCursor", "after", "cursor", "next"]) ?? null;
-        } while (cursor);
-        setInvoicePaymentsReceived(totalInvoicePayments);
-      } catch {
-        setInvoicePaymentsReceived(0);
-      }
     } catch (e: any) {
       if (e?.status === 403 || e?.code === "INSUFFICIENT_PERMISSIONS") {
         setError(
@@ -127,27 +80,58 @@ export default function Reports() {
       }
       setPnl(null);
       setByCategory([]);
-      setInventory(null);
-      setInvoicePaymentsReceived(0);
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [date]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/api/dashboard/reports/inventory-valuation")
+      .then((res) => { if (!cancelled) setInventory(res); })
+      .catch(() => { if (!cancelled) setInventory(null); });
+
+    (async () => {
+      try {
+        let cursor: string | null = null;
+        let totalInvoicePayments = 0;
+        do {
+          const invQs = new URLSearchParams({ limit: "100" });
+          if (cursor) invQs.set("cursor", cursor);
+          const res: any = await api.get(`/api/dashboard/invoices?${invQs.toString()}`);
+          const list = asList(res, "items", "invoices", "data");
+          for (const inv of list) {
+            if (inv.status === "PAID" || inv.status === "ISSUED") totalInvoicePayments += rawNum(inv.amountPaid);
+          }
+          cursor = pick(res, ["nextCursor", "after", "cursor", "next"]) ?? null;
+        } while (cursor && !cancelled);
+        if (!cancelled) setInvoicePaymentsReceived(totalInvoicePayments);
+      } catch {
+        if (!cancelled) setInvoicePaymentsReceived(0);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
   const downloadCsv = async (
     path: string,
     fallbackName: string,
-    withPeriod = true
+    withDate = true
   ) => {
     try {
       // Tokens live under `brikoh.at` (see lib/api.ts); use the real helpers
       // so the Authorization header and host are correct.
       const token = getAccessToken() || "";
-      const query = withPeriod ? `?${periodQuery(period)}` : "";
+      if (withDate && !date) {
+        toast.error("Choose a report date before exporting.");
+        return;
+      }
+      const query = withDate ? `?${dateQuery(date)}` : "";
       const res = await fetch(`${API_BASE}${path}${query}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -164,12 +148,14 @@ export default function Reports() {
     }
   };
 
-  if (loading) return <PageLoader label="Crunching the numbers…" />;
+  if (loading && !pnl) return <PageLoader label="Crunching the numbers…" />;
 
   if (error) {
     return (
       <div>
-        <PageHead title="Reports" sub="Profit & loss and inventory valuation." />
+        <PageHead title="Reports" sub="Profit & loss and inventory valuation.">
+          <ReportDateField date={date} setDate={setDate} />
+        </PageHead>
         <div className="card">
           <ErrorState message={error} onRetry={load} />
         </div>
@@ -180,7 +166,9 @@ export default function Reports() {
   if (!pnl) {
     return (
       <div>
-        <PageHead title="Reports" sub="Profit & loss and inventory valuation." />
+        <PageHead title="Reports" sub="Profit & loss and inventory valuation.">
+          <ReportDateField date={date} setDate={setDate} />
+        </PageHead>
         <div className="card">
           <EmptyState
             icon="chart"
@@ -197,11 +185,7 @@ export default function Reports() {
   const expenses = rawNum(pnl.expenses);
   const netProfit = rawNum(pnl.netProfit);
   const unpriced = pnl.cogsUnpricedLineItems ?? 0;
-  const periodLabel =
-    PERIODS.find((p) => p.key === period)?.label || period;
-  const rangeLabel = pnl.period
-    ? `${fd(pnl.period.start)} → ${fd(pnl.period.end)}`
-    : "";
+  const dateLabel = displayDate(date);
 
   const maxCat = Math.max(
     1,
@@ -212,20 +196,9 @@ export default function Reports() {
     <div>
       <PageHead
         title="Reports"
-        sub={`Profit & loss · ${periodLabel}${rangeLabel ? ` · ${rangeLabel}` : ""}`}
+        sub={`Profit & loss · ${dateLabel}`}
       >
-        <div data-tour-id="reports-period" className="flex flex-wrap gap-1.5">
-          {PERIODS.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              className={cls("chip", period === p.key && "chip-on")}
-              onClick={() => setPeriod(p.key)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <ReportDateField date={date} setDate={setDate} />
       </PageHead>
 
       {/* Unpriced cost warning */}
@@ -239,7 +212,8 @@ export default function Reports() {
       )}
 
       {/* P&L cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="relative">
+      <div className={cls("grid gap-4 sm:grid-cols-2 lg:grid-cols-4 transition-opacity", loading && "opacity-60")}>
         <StatCard
           label="Revenue"
           value={<Money v={revenue} currency={currency} compact />}
@@ -292,6 +266,8 @@ export default function Reports() {
           </p>
         </div>
       </div>
+      {loading && <div className="absolute inset-0 z-10 flex justify-center rounded-xl bg-white/45 pt-4 backdrop-blur-[1px]"><span className="flex h-fit items-center gap-2 rounded-full border border-cream-200 bg-white px-3 py-2 text-xs font-bold text-ink-500 shadow-md"><Spinner size={14} />Refreshing report…</span></div>}
+      </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
@@ -301,7 +277,7 @@ export default function Reports() {
           onClick={() =>
             downloadCsv(
               "/api/dashboard/reports/pnl/export.csv",
-              `pnl-${period}.csv`
+              `pnl-${date}.csv`
             )
           }
         >
@@ -314,7 +290,7 @@ export default function Reports() {
           onClick={() =>
             downloadCsv(
               "/api/dashboard/reports/expenses-by-category/export.csv",
-              `expenses-${period}.csv`
+              `expenses-${date}.csv`
             )
           }
         >
@@ -323,7 +299,8 @@ export default function Reports() {
       </div>
 
       {/* Expenses by category */}
-      <div className="card anim-rise mt-5 p-5">
+      <div className="relative mt-5">
+      <div className={cls("card anim-rise p-5 transition-opacity", loading && "opacity-60")}>
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-display text-base font-extrabold">
@@ -368,6 +345,8 @@ export default function Reports() {
             ))}
           </div>
         )}
+      </div>
+      {loading && <div className="absolute inset-0 z-10 flex justify-center rounded-xl bg-white/45 pt-4 backdrop-blur-[1px]"><span className="flex h-fit items-center gap-2 rounded-full border border-cream-200 bg-white px-3 py-2 text-xs font-bold text-ink-500 shadow-md"><Spinner size={14} />Refreshing expenses…</span></div>}
       </div>
 
       {/* Inventory valuation */}

@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getAccess } from "../lib/access";
 import { api } from "../lib/api";
-import { ago, apiErrorMessage, asList, fm, pick, rawNum, titleCase } from "../lib/format";
+import { ago, apiErrorMessage, asList, fm, pick, rawNum, titleCase, toISODate } from "../lib/format";
+import DatePicker from "../components/DatePicker";
 import {
   Badge,
   Button,
@@ -12,6 +13,7 @@ import {
   Money,
   PageLoader,
   PageHead,
+  Spinner,
   StatCard,
   StatusBadge,
   toast,
@@ -31,7 +33,9 @@ export default function Overview() {
   const access = getAccess(me);
   const store = me.store || {};
   const currency: string = store.currency || "NGN";
-  const [p, setP] = useState<Part>({ overview: null, activity: [], wallet: null, loaded: 0, total: 3 });
+  const [activityDate, setActivityDate] = useState(() => toISODate(new Date()));
+  const [p, setP] = useState<Part>({ overview: null, activity: [], wallet: null, loaded: 0, total: 2 });
+  const [activityLoading, setActivityLoading] = useState(true);
   const [fatal, setFatal] = useState<string | null>(null);
 
   // Restocking straight from the low-stock list: stock only ever moves through
@@ -69,7 +73,7 @@ export default function Overview() {
 
   const load = useCallback(async () => {
     setFatal(null);
-    setP({ overview: null, activity: [], wallet: null, loaded: 0, total: 3 });
+    setP((current) => ({ ...current, overview: null, wallet: null, loaded: 0, total: 2 }));
 
     const tasks: Array<Promise<void>> = [
       api
@@ -79,14 +83,6 @@ export default function Overview() {
           setFatal(e?.message || "Couldn't load your dashboard.");
           setP((s) => ({ ...s, loaded: s.loaded + 1 }));
         }),
-      // NOTE: no contract shared for this route — kept as-is, best effort.
-      api
-        .get("/api/dashboard/activity?limit=10")
-        .then((res) =>
-          setP((s) => ({ ...s, activity: asList(res, "activities", "items", "logs", "entries"), loaded: s.loaded + 1 }))
-        )
-        .catch(() => setP((s) => ({ ...s, loaded: s.loaded + 1 }))),
-      // NOTE: no contract shared for this route — kept as-is, best effort.
       api
         .get("/api/dashboard/wallet")
         .then((res) => setP((s) => ({ ...s, wallet: res, loaded: s.loaded + 1 })))
@@ -98,6 +94,23 @@ export default function Overview() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadActivity = useCallback(async () => {
+    setActivityLoading(true);
+    try {
+      const qs = new URLSearchParams({ date: activityDate, limit: "10" });
+      const res = await api.get(`/api/dashboard/activity?${qs.toString()}`);
+      setP((current) => ({ ...current, activity: asList(res, "activities", "items", "logs", "entries") }));
+    } catch {
+      setP((current) => ({ ...current, activity: [] }));
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [activityDate]);
+
+  useEffect(() => {
+    loadActivity();
+  }, [loadActivity]);
 
   if (p.loaded < p.total && !fatal) return <PageLoader label="Warming up your dashboard…" />;
   if (fatal) return <ErrorState message={fatal} onRetry={load} />;
@@ -344,12 +357,18 @@ export default function Overview() {
             </div>
           )}
 
-          {/* Activity — no contract shared for this route */}
+          {/* Activity for the selected calendar day. */}
           <div className="card anim-rise overflow-hidden">
             <div className="flex items-center justify-between border-b border-cream-200 px-5 py-3.5">
               <h3 className="font-display text-base font-extrabold">Activity</h3>
+              <div className="flex items-center gap-2">
+                {activityLoading && <Spinner size={14} className="text-brand-500" />}
+                <DatePicker label="Activity date" value={activityDate} onChange={setActivityDate} />
+              </div>
             </div>
-            {p.activity.length === 0 ? (
+            {activityLoading && p.activity.length === 0 ? (
+              <p className="px-5 py-6 text-sm font-semibold text-ink-400">Loading activity…</p>
+            ) : p.activity.length === 0 ? (
               <p className="px-5 py-6 text-sm font-semibold text-ink-400">Recent actions will show up here.</p>
             ) : (
               <div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { asList, cls, fd, rawNum, titleCase, toISODate } from "../lib/format";
+import DatePicker from "../components/DatePicker";
 import {
   Badge,
   Button,
@@ -15,6 +16,7 @@ import {
   Money,
   PageHead,
   Select,
+  Spinner,
   StatCard,
   toast,
 } from "../components/ui";
@@ -39,18 +41,11 @@ const CAT_COLOR: Record<string, string> = {
   OTHER: "bg-cream-300",
 };
 
-function monthBounds(offset: number): { from: Date; to: Date } {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-  const to = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
-  return { from: d, to };
-}
-
 export default function Expenses() {
   const { me } = useAuth();
   const currency: string = (me.store as any)?.currency || "NGN";
 
-  const [offset, setOffset] = useState(0);
+  const [date, setDate] = useState(() => toISODate(new Date()));
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,37 +64,29 @@ export default function Expenses() {
   const [delFor, setDelFor] = useState<any | null>(null);
   const [delBusy, setDelBusy] = useState(false);
 
-  // const { from, to } = monthBounds(offset);
-  // const monthLabel = from.toLocaleDateString("en-GB", {
-  //   month: "long",
-  //   year: "numeric",
-  // });
-
-  const { from } = useMemo(() => monthBounds(offset), [offset]);
-const monthLabel = from.toLocaleDateString("en-GB", {
-  month: "long",
-  year: "numeric",
-});
+  const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 
   // ---------- Load ----------
  const load = useCallback(async () => {
   setLoading(true);
   setError(null);
+  if (!date) {
+    setError("Choose an expense date.");
+    setLoading(false);
+    return;
+  }
   try {
-    const { from, to } = monthBounds(offset); // ← compute here
-    const qs = new URLSearchParams();
-    qs.set("from", toISODate(from));
-    qs.set("to", toISODate(to));
-    qs.set("limit", "100");
+    const qs = new URLSearchParams({ date, limit: "100" });
 
     const res = await api.get(`/api/dashboard/expenses?${qs.toString()}`);
     let list = asList(res, "expenses", "items", "data");
 
     list = list.filter((x) => {
-      const d = String(x.date || "").slice(0, 10);
-      const f = toISODate(from);
-      const t = toISODate(to);
-      return d >= f && d <= t;
+      return String(x.date || "").slice(0, 10) === date;
     });
 
     list.sort(
@@ -113,7 +100,7 @@ const monthLabel = from.toLocaleDateString("en-GB", {
   } finally {
     setLoading(false);
   }
-}, [offset]); // ← only offset
+}, [date]);
 
   useEffect(() => {
     load();
@@ -137,7 +124,7 @@ const monthLabel = from.toLocaleDateString("en-GB", {
     setForm({
       category: "OTHER",
       amount: "",
-      date: toISODate(new Date()),
+      date,
       description: "",
     });
     setFormErr("");
@@ -216,34 +203,17 @@ const monthLabel = from.toLocaleDateString("en-GB", {
         title="Expenses"
         sub="What you spent on running the business — feeds your profit & loss report."
       >
-        <div className="flex items-center gap-1 rounded-xl border border-cream-300 bg-white p-1">
-          <Button
-            data-tour-id="expenses-period"
-            variant="ghost"
-            size="sm"
-            icon="chevronLeft"
-            onClick={() => setOffset((o) => o + 1)}
-            aria-label="Previous month"
-          />
-          <span className="px-2 text-sm font-extrabold">{monthLabel}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon="chevronRight"
-            disabled={offset >= 0}
-            onClick={() => setOffset((o) => o - 1)}
-            aria-label="Next month"
-          />
-        </div>
+        <div data-tour-id="expenses-period"><DatePicker label="Expense date" value={date} onChange={setDate} /></div>
         <Button data-tour-id="expenses-new" icon="plus" onClick={openCreate}>
           Record expense
         </Button>
       </PageHead>
 
       {/* Summary */}
-      <div className="mb-5 grid gap-4 sm:grid-cols-3">
+      <div className="relative mb-5">
+      <div className={cls("grid gap-4 sm:grid-cols-3 transition-opacity", loading && "opacity-60")}>
         <StatCard
-          label={`Spent in ${monthLabel.split(" ")[0]}`}
+          label="Spent on selected date"
           value={<Money v={total} currency={currency} compact />}
           icon="banknote"
           tone="brand"
@@ -255,7 +225,7 @@ const monthLabel = from.toLocaleDateString("en-GB", {
           </p>
           {byCat.length === 0 ? (
             <p className="mt-3 text-sm font-semibold text-ink-400">
-              Nothing recorded this month.
+              Nothing recorded on this date.
             </p>
           ) : (
             <div className="mt-3 space-y-2.5">
@@ -284,6 +254,8 @@ const monthLabel = from.toLocaleDateString("en-GB", {
           )}
         </div>
       </div>
+      {loading && <div className="pointer-events-none absolute inset-0 z-10 flex justify-center rounded-xl bg-white/35 pt-3 backdrop-blur-[1px]"><span className="flex h-fit items-center gap-2 rounded-full border border-cream-200 bg-white px-3 py-2 text-xs font-bold text-ink-500 shadow-md"><Spinner size={14} />Refreshing expenses…</span></div>}
+      </div>
 
       {/* List */}
       {loading ? (
@@ -300,7 +272,7 @@ const monthLabel = from.toLocaleDateString("en-GB", {
         <div className="card">
           <EmptyState
             icon="banknote"
-            title={`No expenses in ${monthLabel}`}
+            title={`No expenses on ${dateLabel}`}
             hint="Rent, transport, packaging, salaries, data — record them here and the P&L does the maths."
             action={
               <Button icon="plus" onClick={openCreate}>

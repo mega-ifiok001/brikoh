@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { cls, fdt, titleCase } from "../lib/format";
+import DatePicker from "../components/DatePicker";
 import {
   Badge,
   Button,
@@ -66,8 +67,7 @@ export default function Orders() {
   const [source, setSource] = useState("ALL");
   const [q, setQ] = useState("");
 
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [date, setDate] = useState("");
 
   const [detail, setDetail] = useState<any | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
@@ -110,13 +110,7 @@ export default function Orders() {
           qs.set("q", q.trim());
         }
 
-        if (start) {
-          qs.set("start", start);
-        }
-
-        if (end) {
-          qs.set("end", end);
-        }
+        if (date) qs.set("date", date);
 
         if (customerId) {
           qs.set("customerId", customerId);
@@ -144,7 +138,7 @@ export default function Orders() {
         setLoadingMore(false);
       }
     },
-    [status, paymentMethod, source, q, start, end, customerId]
+    [status, paymentMethod, source, q, date, customerId]
   );
 
   useEffect(() => {
@@ -343,32 +337,15 @@ export default function Orders() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
-          <Field label="From">
-            <Input
-              type="datetime-local"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-            />
-          </Field>
+          <DatePicker label="Order date" value={date} onChange={setDate} allowClear />
 
-          <Field label="To">
-            <Input
-              type="datetime-local"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-            />
-          </Field>
-
-          {(start || end) && (
+          {date && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                setStart("");
-                setEnd("");
-              }}
+              onClick={() => setDate("")}
             >
-              Clear dates
+              Clear date
             </Button>
           )}
         </div>

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
-import { cls, fd, rawNum, titleCase } from "../lib/format";
+import { cls, fd, rawNum, titleCase, toISODate } from "../lib/format";
+import DatePicker from "../components/DatePicker";
 import {
   Badge,
   Button,
@@ -11,34 +12,11 @@ import {
   Money,
   PageHead,
   PageLoader,
+  Spinner,
   StatCard,
   Tabs,
 } from "../components/ui";
 
-// ── Date-range presets ──────────────────────────────────────────────────
-// The contract requires `start`/`end` as UTC ISO-8601 with an explicit
-// offset and a half-open range (`end` exclusive), max 366 days. We turn
-// a friendly preset into that shape client-side rather than exposing raw
-// timestamps in the UI.
-const RANGES = [
-  { key: "7d", label: "Last 7 days", days: 7 },
-  { key: "30d", label: "Last 30 days", days: 30 },
-  { key: "90d", label: "Last 90 days", days: 90 },
-  { key: "365d", label: "Last 12 months", days: 365 },
-] as const;
-type RangeKey = (typeof RANGES)[number]["key"];
-
-function rangeFor(key: RangeKey): { start: string; end: string } {
-  const days = RANGES.find((r) => r.key === key)?.days ?? 30;
-  const now = new Date();
-  // `end` is exclusive — use the UTC midnight *after* today so today's
-  // orders are still included in the window.
-  const endUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  const startUtc = endUtc - days * 86_400_000;
-  return { start: new Date(startUtc).toISOString(), end: new Date(endUtc).toISOString() };
-}
-
-type Granularity = "daily" | "weekly";
 type TabKey = "overview" | "trends" | "staff" | "channels";
 
 // A 403 from the advanced endpoints just means "not on this plan" — it's
@@ -66,6 +44,10 @@ async function getAdvanced(path: string): Promise<any | Locked> {
   }
 }
 
+function AnalyticsDateField({ date, setDate }: { date: string; setDate: (value: string) => void }) {
+  return <DatePicker label="Analytics date" value={date} onChange={setDate} />;
+}
+
 export default function Analytics() {
   const { me } = useAuth();
   const currency: string = (me.store as any)?.currency || "NGN";
@@ -91,12 +73,10 @@ export default function Analytics() {
     };
   }, []);
 
-  const [rangeKey, setRangeKey] = useState<RangeKey>("30d");
-  const [granularity, setGranularity] = useState<Granularity>("daily");
+  const [date, setDate] = useState(() => toISODate(new Date()));
   const [tab, setTab] = useState<TabKey>("overview");
 
-  const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
-  const qs = `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+  const qs = new URLSearchParams({ date }).toString();
 
   const [summary, setSummary] = useState<any>(null);
   const [timeseries, setTimeseries] = useState<any>(null);
@@ -110,11 +90,16 @@ export default function Analytics() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    if (!date) {
+      setError("Choose an analytics date.");
+      setLoading(false);
+      return;
+    }
     try {
       const [summaryRes, tsRes, trendsRes, staffRes, channelsRes] = await Promise.all([
         api.get(`/api/dashboard/analytics/summary?${qs}&top=5`),
-        api.get(`/api/dashboard/analytics/timeseries?${qs}&granularity=${granularity}`),
-        getAdvanced(`/api/dashboard/analytics/trends?${qs}&granularity=${granularity}`),
+        api.get(`/api/dashboard/analytics/timeseries?${qs}`),
+        getAdvanced(`/api/dashboard/analytics/trends?${qs}`),
         getAdvanced(`/api/dashboard/analytics/staff-performance?${qs}`),
         getAdvanced(`/api/dashboard/analytics/channels?${qs}`),
       ]);
@@ -139,18 +124,20 @@ export default function Analytics() {
     } finally {
       setLoading(false);
     }
-  }, [qs, granularity]);
+  }, [qs]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  if (loading) return <PageLoader label="Crunching the numbers…" />;
+  if (loading && !summary) return <PageLoader label="Crunching the numbers…" />;
 
   if (error) {
     return (
       <div>
-        <PageHead title="Analytics" sub="Sales performance, trends and channels." />
+        <PageHead title="Analytics" sub="Sales performance, trends and channels.">
+          <AnalyticsDateField date={date} setDate={setDate} />
+        </PageHead>
         <div className="card">
           <ErrorState message={error} onRetry={load} />
         </div>
@@ -161,7 +148,9 @@ export default function Analytics() {
   if (!summary) {
     return (
       <div>
-        <PageHead title="Analytics" sub="Sales performance, trends and channels." />
+        <PageHead title="Analytics" sub="Sales performance, trends and channels.">
+          <AnalyticsDateField date={date} setDate={setDate} />
+        </PageHead>
         <div className="card">
           <EmptyState
             icon="chart"
@@ -181,19 +170,10 @@ export default function Analytics() {
 
   return (
     <div>
-      <PageHead title="Analytics" sub={`${fd(start)} → ${fd(end)}`}>
-        <div data-tour-id="analytics-range" className="flex flex-wrap items-center gap-1.5">
+      <PageHead title="Analytics" sub={`Business analytics · ${date}`}>
+        <div data-tour-id="analytics-range" className="flex flex-wrap items-center gap-3">
           {planTier && <Badge tone="brand">{titleCase(planTier)}</Badge>}
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              className={cls("chip", rangeKey === r.key && "chip-on")}
-              onClick={() => setRangeKey(r.key)}
-            >
-              {r.label}
-            </button>
-          ))}
+          <AnalyticsDateField date={date} setDate={setDate} />
         </div>
       </PageHead>
 
@@ -209,21 +189,24 @@ export default function Analytics() {
         onChange={(id) => setTab(id as TabKey)}
       />
 
-      {tab === "overview" && (
-        <OverviewTab
-          currency={currency}
-          totalSales={totalSales}
-          orderCount={orderCount}
-          avgOrderValue={avgOrderValue}
-          bestSellers={bestSellers}
-          buckets={buckets}
-          granularity={granularity}
-          onGranularity={setGranularity}
-        />
-      )}
-      {tab === "trends" && <TrendsTab data={trends} currency={currency} />}
-      {tab === "staff" && <StaffTab data={staff} currency={currency} />}
-      {tab === "channels" && <ChannelsTab data={channels} currency={currency} />}
+      <div className="relative">
+        <div className={cls("transition-opacity", loading && "opacity-50")}>
+          {tab === "overview" && (
+            <OverviewTab
+              currency={currency}
+              totalSales={totalSales}
+              orderCount={orderCount}
+              avgOrderValue={avgOrderValue}
+              bestSellers={bestSellers}
+              buckets={buckets}
+            />
+          )}
+          {tab === "trends" && <TrendsTab data={trends} currency={currency} />}
+          {tab === "staff" && <StaffTab data={staff} currency={currency} />}
+          {tab === "channels" && <ChannelsTab data={channels} currency={currency} />}
+        </div>
+        {loading && <div className="pointer-events-none absolute inset-0 z-10 flex justify-center rounded-xl bg-white/35 pt-4 backdrop-blur-[1px]"><span className="flex h-fit items-center gap-2 rounded-full border border-cream-200 bg-white px-3 py-2 text-xs font-bold text-ink-500 shadow-md"><Spinner size={14} />Refreshing analytics…</span></div>}
+      </div>
     </div>
   );
 }
@@ -264,7 +247,7 @@ function BucketChart({
   currency: string;
 }) {
   if (buckets.length === 0) {
-    return <p className="mt-6 text-sm font-semibold text-ink-400">No data in this range.</p>;
+    return <p className="mt-6 text-sm font-semibold text-ink-400">No data for this date.</p>;
   }
   const max = Math.max(1, ...buckets.map((b) => rawNum(b.totalSales)));
   return (
@@ -305,8 +288,6 @@ function OverviewTab({
   avgOrderValue,
   bestSellers,
   buckets,
-  granularity,
-  onGranularity,
 }: {
   currency: string;
   totalSales: number;
@@ -314,8 +295,6 @@ function OverviewTab({
   avgOrderValue: number;
   bestSellers: any[];
   buckets: any[];
-  granularity: Granularity;
-  onGranularity: (g: Granularity) => void;
 }) {
   return (
     <div>
@@ -339,18 +318,6 @@ function OverviewTab({
       <div className="card anim-rise mt-5 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-display text-base font-extrabold">Sales over time</h3>
-          <div className="flex gap-1.5">
-            {(["daily", "weekly"] as Granularity[]).map((g) => (
-              <button
-                key={g}
-                type="button"
-                className={cls("chip", granularity === g && "chip-on")}
-                onClick={() => onGranularity(g)}
-              >
-                {titleCase(g)}
-              </button>
-            ))}
-          </div>
         </div>
         <BucketChart buckets={buckets} currency={currency} />
       </div>
@@ -358,7 +325,7 @@ function OverviewTab({
       <div className="card anim-rise mt-5 p-5">
         <h3 className="font-display text-base font-extrabold">Best sellers</h3>
         {bestSellers.length === 0 ? (
-          <p className="mt-4 text-sm font-semibold text-ink-400">No sales in this range yet.</p>
+          <p className="mt-4 text-sm font-semibold text-ink-400">No sales for this date yet.</p>
         ) : (
           <div className="mt-4 overflow-x-auto scrollbar-slim">
             <table className="tbl">
@@ -453,7 +420,7 @@ function StaffTab({ data, currency }: { data: any | Locked | null; currency: str
       <h3 className="font-display text-base font-extrabold">Staff performance</h3>
       {staff.length === 0 ? (
         <p className="mt-4 text-sm font-semibold text-ink-400">
-          No sales or inventory activity attributed to staff in this range.
+          No sales or inventory activity attributed to staff on this date.
         </p>
       ) : (
         <div className="mt-4 overflow-x-auto scrollbar-slim">
