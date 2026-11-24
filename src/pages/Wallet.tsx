@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { api } from "../lib/api";
-import { asList, fd, rawNum, titleCase } from "../lib/format";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, API_BASE, getAccessToken } from "../lib/api";
+import { asList, fd, pick, rawNum, titleCase, toISODate } from "../lib/format";
+import DatePicker from "../components/DatePicker";
 import {
   Badge,
   Button,
@@ -8,22 +9,69 @@ import {
   ErrorState,
   Field,
   Input,
+  KV,
   Modal,
   Money,
   PageHead,
+  SearchInput,
   Select,
+  Spinner,
   StatCard,
   StatusBadge,
   toast,
 } from "../components/ui";
 
+function initialTransactionDates() {
+  const now = new Date();
+  return {
+    from: toISODate(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: toISODate(now),
+  };
+}
+
+function txDateLabel(value: any) {
+  const date = String(value || "");
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return fd(date);
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    .toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function txValue(item: any, ...keys: string[]) {
+  for (const key of keys) {
+    const value = key.split(".").reduce((current, part) => current?.[part], item);
+    if (value !== undefined && value !== null && value !== "") return String(value);
+  }
+  return "";
+}
+
 export default function Wallet() {
   const [wallet, setWallet] = useState<any>(null);
-  const [entries, setEntries] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [initialDates] = useState(initialTransactionDates);
+  const [from, setFrom] = useState(initialDates.from);
+  const [to, setTo] = useState(initialDates.to);
+  const [view, setView] = useState<"all" | "wallet">("wallet");
+  const [direction, setDirection] = useState("");
+  const [type, setType] = useState("");
+  const [status, setStatus] = useState("");
+  const [method, setMethod] = useState("");
+  const [branch, setBranch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactionCursor, setTransactionCursor] = useState<string | null>(null);
+  const [transactionLoading, setTransactionLoading] = useState(true);
+  const [transactionLoadingMore, setTransactionLoadingMore] = useState(false);
+  const [transactionError, setTransactionError] = useState<string | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
+  const [transactionDetail, setTransactionDetail] = useState<any | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
 
   // Add bank account
   const [acctOpen, setAcctOpen] = useState(false);
@@ -52,17 +100,9 @@ export default function Wallet() {
       const res: any = await api.get("/api/dashboard/wallet");
       const w = res?.wallet ?? res;
       setWallet(w);
-      setEntries(
-        Array.isArray(res?.recentEntries)
-          ? res.recentEntries
-          : Array.isArray(w?.recentEntries)
-          ? w.recentEntries
-          : []
-      );
     } catch (e: any) {
       setError(e?.message || "Couldn't load wallet.");
       setWallet(null);
-      setEntries([]);
     }
 
     // 2. Withdrawals list (contract)
@@ -102,6 +142,117 @@ export default function Wallet() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
+
+  const transactionParams = (cursor?: string | null) => {
+    const params = new URLSearchParams({ from, to, view, limit: "25" });
+    if (direction) params.set("direction", direction);
+    if (type) params.set("type", type);
+    if (status) params.set("status", status);
+    if (method) params.set("method", method);
+    if (branch) params.set("branch", branch);
+    if (searchInput.trim()) params.set("search", searchInput.trim());
+    if (cursor) params.set("cursor", cursor);
+    return params;
+  };
+
+  const loadTransactions = useCallback(async (cursor?: string | null) => {
+    if (!from || !to || from > to) {
+      setTransactionError("Choose a valid date range: the start date must be on or before the end date.");
+      setTransactionLoading(false);
+      return;
+    }
+    if (cursor) setTransactionLoadingMore(true);
+    else {
+      setTransactionLoading(true);
+      setTransactionCursor(null);
+    }
+    setTransactionError(null);
+    try {
+      const params = new URLSearchParams({ from, to, view, limit: "25" });
+      if (direction) params.set("direction", direction);
+      if (type) params.set("type", type);
+      if (status) params.set("status", status);
+      if (method) params.set("method", method);
+      if (branch) params.set("branch", branch);
+      if (search) params.set("search", search);
+      if (cursor) params.set("cursor", cursor);
+      const res: any = await api.get(`/api/dashboard/transactions?${params.toString()}`);
+      const items = asList(res, "transactions", "items", "data");
+      setTransactions((current) => cursor ? [...current, ...items] : items);
+      setTransactionCursor(pick(res, ["nextCursor", "after", "cursor", "next"]) ?? null);
+    } catch (e: any) {
+      const message = e?.message || "Couldn't load transactions.";
+      if (cursor) toast.error(message);
+      else setTransactionError(message);
+    } finally {
+      setTransactionLoading(false);
+      setTransactionLoadingMore(false);
+    }
+  }, [from, to, view, direction, type, status, method, branch, search]);
+
+  useEffect(() => {
+    loadTransactions();
+  }, [loadTransactions]);
+
+  const openTransaction = async (transaction: any) => {
+    setSelectedTransaction(transaction);
+    setTransactionDetail(null);
+    setDetailError("");
+    setDetailLoading(true);
+    try {
+      const res = await api.get(`/api/dashboard/transactions/${encodeURIComponent(transaction.id)}`);
+      setTransactionDetail(res?.transaction ?? res?.data?.transaction ?? res?.data ?? res);
+    } catch (e: any) {
+      setDetailError(e?.message || "Couldn't load transaction details.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const exportTransactions = async () => {
+    if (!from || !to || from > to) {
+      toast.error("Choose a valid date range before exporting.");
+      return;
+    }
+    const params = transactionParams();
+    params.delete("limit");
+    params.delete("cursor");
+    try {
+      const token = getAccessToken() || "";
+      const response = await fetch(`${API_BASE}/api/dashboard/transactions/export.csv?${params.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error("Couldn't export the transaction statement.");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `transactions-${from}-to-${to}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't export the transaction statement.");
+    }
+  };
+
+  const directionOptions = useMemo(() => [...new Set(transactions.map((item) => txValue(item, "direction")).filter(Boolean))], [transactions]);
+  const typeOptions = useMemo(() => [...new Set(transactions.map((item) => txValue(item, "type", "transactionType")).filter(Boolean))], [transactions]);
+  const statusOptions = useMemo(() => [...new Set(transactions.map((item) => txValue(item, "status")).filter(Boolean))], [transactions]);
+  const methodOptions = useMemo(() => [...new Set(transactions.map((item) => txValue(item, "method", "paymentMethod")).filter(Boolean))], [transactions]);
+  const branchOptions = useMemo(() => {
+    const found = new Map<string, string>();
+    transactions.forEach((item) => {
+      const id = txValue(item, "branchId", "branch.id");
+      const name = txValue(item, "branchName", "branch.name") || (id ? "Branch" : "Main branch");
+      if (id) found.set(id, name);
+    });
+    return [...found.entries()];
+  }, [transactions]);
 
   const available = wallet?.available ?? "0.00";
   const pending = wallet?.pending ?? "0.00";
@@ -274,7 +425,7 @@ export default function Wallet() {
             />
           </div>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <div className="mt-5">
             {/* Withdrawals */}
             <div className="card anim-rise overflow-hidden">
               <div className="border-b border-cream-200 px-5 py-3.5">
@@ -330,66 +481,125 @@ export default function Wallet() {
               )}
             </div>
 
-            {/* Ledger */}
-            <div className="card anim-rise overflow-hidden">
-              <div className="border-b border-cream-200 px-5 py-3.5">
-                <h3 className="font-display text-base font-extrabold">
-                  Wallet activity
-                </h3>
-                <p className="text-xs text-ink-400">
-                  Last 25 ledger movements
-                </p>
+          </div>
+
+          {/* Transactions */}
+          <section className="card anim-rise mt-5 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cream-200 px-5 py-4">
+              <div>
+                <h3 className="font-display text-base font-extrabold">Transactions</h3>
+                <p className="text-xs text-ink-400">Search, filter, and export account activity.</p>
               </div>
-              {entries.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm font-semibold text-ink-400">
-                  Credits from online sales and debits from withdrawals appear
-                  here.
-                </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex rounded-xl bg-cream-100 p-1">
+                  {(["wallet", "all"] as const).map((scope) => (
+                    <button
+                      key={scope}
+                      type="button"
+                      onClick={() => setView(scope)}
+                      className={`rounded-lg px-3 py-2 text-xs font-extrabold transition ${view === scope ? "bg-white text-brand-700 shadow-sm" : "text-ink-500 hover:text-ink-900"}`}
+                    >
+                      {scope === "wallet" ? "Wallet only" : "All transactions"}
+                    </button>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" icon="download" onClick={exportTransactions}>Export CSV</Button>
+              </div>
+            </div>
+
+            <div className="space-y-4 border-b border-cream-100 px-5 py-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <DatePicker label="From" value={from} onChange={setFrom} />
+                <DatePicker label="To" value={to} onChange={setTo} />
+                <SearchInput value={searchInput} onChange={setSearchInput} placeholder="Search transactions…" className="w-full sm:w-64" />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <Field label="Direction">
+                  <Select value={direction} onChange={(event) => setDirection(event.target.value)}>
+                    <option value="">All directions</option>
+                    {directionOptions.map((option) => <option key={option} value={option}>{titleCase(option.replace(/_/g, " "))}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Type">
+                  <Select value={type} onChange={(event) => setType(event.target.value)}>
+                    <option value="">All types</option>
+                    {typeOptions.map((option) => <option key={option} value={option}>{titleCase(option.replace(/_/g, " "))}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Status">
+                  <Select value={status} onChange={(event) => setStatus(event.target.value)}>
+                    <option value="">All statuses</option>
+                    {statusOptions.map((option) => <option key={option} value={option}>{titleCase(option.replace(/_/g, " "))}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Method">
+                  <Select value={method} onChange={(event) => setMethod(event.target.value)}>
+                    <option value="">All methods</option>
+                    {methodOptions.map((option) => <option key={option} value={option}>{titleCase(option.replace(/_/g, " "))}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Branch">
+                  <Select value={branch} onChange={(event) => setBranch(event.target.value)}>
+                    <option value="">All branches</option>
+                    {branchOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                  </Select>
+                </Field>
+              </div>
+            </div>
+
+            <div className="relative min-h-24">
+              {transactionLoading && transactions.length > 0 && (
+                <div className="pointer-events-none absolute inset-0 z-10 flex justify-center bg-white/50 pt-4 backdrop-blur-[1px]">
+                  <span className="flex h-fit items-center gap-2 rounded-full border border-cream-200 bg-white px-3 py-2 text-xs font-bold text-ink-500 shadow-md"><Spinner size={14} />Refreshing transactions…</span>
+                </div>
+              )}
+              {transactionLoading && transactions.length === 0 ? (
+                <div className="space-y-2 p-5">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-11" />)}</div>
+              ) : transactionError ? (
+                <div className="p-5"><ErrorState message={transactionError} onRetry={() => loadTransactions()} /></div>
+              ) : transactions.length === 0 ? (
+                <EmptyState icon="banknote" title="No transactions found" hint="Try another date range or clear some filters." />
               ) : (
-                <div>
-                  {entries.slice(0, 15).map((e) => {
-                    const isCredit =
-                      (e.type || "").toUpperCase() === "CREDIT";
-                    return (
-                      <div
-                        key={e.id}
-                        className="flex items-center gap-3 border-b border-cream-100 px-5 py-3 last:border-0"
-                      >
-                        <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-extrabold ${
-                            isCredit
-                              ? "bg-leaf-100 text-leaf-700"
-                              : "bg-cream-100 text-ink-500"
-                          }`}
-                        >
-                          {isCredit ? "+" : "−"}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold">
-                            {titleCase(
-                              (e.source || "movement").replace(/_/g, " ")
-                            )}
-                          </p>
-                          <p className="text-xs text-ink-400">
-                            {fd(e.createdAt)} · bal{" "}
-                            <Money v={e.balanceAfter} currency={currency} />
-                          </p>
-                        </div>
-                        <span
-                          className={`font-extrabold tabular-nums ${
-                            isCredit ? "text-leaf-600" : "text-ink-700"
-                          }`}
-                        >
-                          {isCredit ? "+" : "−"}
-                          <Money v={e.amount} currency={currency} />
-                        </span>
-                      </div>
-                    );
-                  })}
+                <div className="overflow-x-auto scrollbar-slim">
+                  <table className="tbl min-w-[850px]">
+                    <thead><tr><th>Date</th><th>Transaction</th><th>Reference</th><th>Method</th><th>Branch</th><th>Status</th><th className="text-right">Amount</th></tr></thead>
+                    <tbody>
+                      {transactions.map((item) => {
+                        const itemDirection = txValue(item, "direction").toUpperCase();
+                        const isCredit = /credit|inbound|incoming|^in$/i.test(itemDirection) || (!itemDirection && rawNum(item.amount) >= 0);
+                        const itemType = txValue(item, "type", "transactionType") || "Transaction";
+                        const itemDate = txValue(item, "date", "createdAt", "occurredAt");
+                        const itemBranch = txValue(item, "branchName", "branch.name") || "—";
+                        return (
+                          <tr key={item.id}>
+                            <td className="whitespace-nowrap">{txDateLabel(itemDate)}</td>
+                            <td>
+                              <button type="button" onClick={() => openTransaction(item)} className="text-left font-extrabold text-brand-700 hover:underline">
+                                {titleCase(itemType.replace(/_/g, " "))}
+                              </button>
+                              {txValue(item, "description") && <span className="block max-w-56 truncate text-xs text-ink-400">{txValue(item, "description")}</span>}
+                            </td>
+                            <td className="font-mono text-xs">{txValue(item, "reference", "referenceId", "id") || "—"}</td>
+                            <td>{titleCase(txValue(item, "method", "paymentMethod").replace(/_/g, " ")) || "—"}</td>
+                            <td>{itemBranch}</td>
+                            <td>{txValue(item, "status") ? <StatusBadge status={txValue(item, "status")} /> : "—"}</td>
+                            <td className={`text-right font-extrabold tabular-nums ${isCredit ? "text-leaf-700" : "text-ink-800"}`}>
+                              {isCredit ? "+" : "−"}<Money v={Math.abs(rawNum(item.amount))} currency={currency} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {transactionCursor && (
+                    <div className="border-t border-cream-100 px-5 py-4 text-center">
+                      <Button variant="outline" size="sm" loading={transactionLoadingMore} onClick={() => loadTransactions(transactionCursor)}>Load more transactions</Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
           {/* Bank accounts strip */}
           {accounts.length > 0 && (
@@ -436,6 +646,33 @@ export default function Wallet() {
           </p>
         </>
       )}
+
+      {/* Transaction details */}
+      <Modal
+        open={!!selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+        title="Transaction details"
+        sub={selectedTransaction ? `Transaction ${selectedTransaction.id}` : undefined}
+        footer={<Button variant="outline" onClick={() => setSelectedTransaction(null)}>Close</Button>}
+      >
+        {detailLoading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm font-semibold text-ink-400"><Spinner size={18} />Loading transaction…</div>
+        ) : detailError ? (
+          <ErrorState message={detailError} onRetry={() => selectedTransaction && openTransaction(selectedTransaction)} />
+        ) : transactionDetail ? (
+          <div className="divide-y divide-cream-100">
+            <KV label="Date" value={txDateLabel(txValue(transactionDetail, "date", "createdAt", "occurredAt") || txValue(selectedTransaction, "date", "createdAt"))} />
+            <KV label="Type" value={titleCase(txValue(transactionDetail, "type", "transactionType") || txValue(selectedTransaction, "type", "transactionType") || "Transaction").replace(/_/g, " ")} />
+            <KV label="Direction" value={titleCase(txValue(transactionDetail, "direction") || txValue(selectedTransaction, "direction") || "—")} />
+            <KV label="Status" value={txValue(transactionDetail, "status") ? <StatusBadge status={txValue(transactionDetail, "status")} /> : "—"} />
+            <KV label="Method" value={titleCase((txValue(transactionDetail, "method", "paymentMethod") || txValue(selectedTransaction, "method", "paymentMethod") || "—").replace(/_/g, " "))} />
+            <KV label="Reference" value={txValue(transactionDetail, "reference", "referenceId") || txValue(selectedTransaction, "reference", "referenceId") || "—"} mono />
+            <KV label="Branch" value={txValue(transactionDetail, "branchName", "branch.name") || txValue(selectedTransaction, "branchName", "branch.name") || "—"} />
+            <KV label="Amount" value={<Money v={transactionDetail.amount ?? selectedTransaction?.amount} currency={currency} strong />} />
+            <KV label="Description" value={txValue(transactionDetail, "description") || txValue(selectedTransaction, "description") || "—"} />
+          </div>
+        ) : null}
+      </Modal>
 
       {/* Add bank account modal */}
       <Modal
