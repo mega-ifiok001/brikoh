@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { API_BASE, api } from "../lib/api";
-import { cls, fm, rawNum } from "../lib/format";
+import { cls, fdt, fm, rawNum, titleCase } from "../lib/format";
 import {
   Badge,
   Button,
@@ -139,6 +139,7 @@ interface DeliveryOption {
   id: string;
   name: string;
   kind: "PICKUP" | "DELIVERY";
+  provider?: "MANUAL" | "SHIPBUBBLE";
   description: string | null;
   baseFee: string;
   isActive?: boolean;
@@ -229,6 +230,20 @@ interface PublicOrderView {
   paymentProvider: "paystack" | "bank_transfer";
   paymentReference: string;
   bankDetails: BankDetails | null;
+  fulfillmentStatus?: string | null;
+  fulfillment?: {
+    status?: string | null;
+    courierName?: string | null;
+    courierPhone?: string | null;
+    shipmentReference?: string | null;
+    trackingUrl?: string | null;
+    history?: Array<{ id?: string; status?: string; note?: string | null; createdAt?: string; at?: string }>;
+    statusHistory?: Array<{ id?: string; status?: string; note?: string | null; createdAt?: string; at?: string }>;
+    events?: Array<{ id?: string; status?: string; note?: string | null; createdAt?: string; at?: string; courierName?: string | null; shipmentReference?: string | null }>;
+  } | null;
+  fulfillmentHistory?: Array<{ id?: string; status?: string; note?: string | null; createdAt?: string; at?: string }>;
+  fulfillmentStatusHistory?: Array<{ id?: string; status?: string; note?: string | null; createdAt?: string; at?: string }>;
+  delivery?: { optionName?: string | null; kind?: string | null; pickupAddressText?: string | null } | null;
 }
 
 interface CartLine {
@@ -724,6 +739,9 @@ export default function StoreView() {
   const [availablePaymentMethods, setAvailablePaymentMethods] = useState<PaymentMethod[]>([]);
   const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
   const [deliveryOptionId, setDeliveryOptionId] = useState<string>("");
+  const [shipbubbleQuote, setShipbubbleQuote] = useState<any | null>(null);
+  const [shipbubbleChoice, setShipbubbleChoice] = useState<any | null>(null);
+  const [ratesBusy, setRatesBusy] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -1202,6 +1220,7 @@ export default function StoreView() {
       if (!addr.city.trim()) return setErr("Please enter your city.");
       if (!addr.state.trim()) return setErr("Please enter your state.");
     }
+    if (selectedDelivery?.provider === "SHIPBUBBLE" && (!shipbubbleQuote?.quoteId || !shipbubbleChoice)) return setErr("Get courier rates and choose a delivery service before checkout.");
 
     setCheckingOut(true);
 
@@ -1230,6 +1249,11 @@ export default function StoreView() {
                 : {}),
             }
           : {}),
+        ...(selectedDelivery?.provider === "SHIPBUBBLE" ? {
+          shipbubbleQuoteId: shipbubbleQuote.quoteId,
+          shipbubbleCourierId: shipbubbleChoice.courierId,
+          shipbubbleServiceCode: shipbubbleChoice.serviceCode,
+        } : {}),
         origin: "DIRECT",
         paymentMethod,
       };
@@ -1276,7 +1300,10 @@ export default function StoreView() {
         return;
       }
 
-      if (provider === "bank_transfer") setCartOpen(true);
+      if (provider === "bank_transfer") {
+        setCartOpen(true);
+        void fetchOrder(order.id);
+      }
     } catch (e: any) {
       setErr(checkoutErrorMessage(e));
     } finally {
@@ -2515,6 +2542,44 @@ export default function StoreView() {
                     </div>
                   )}
 
+                  {orderView && (orderView.fulfillment || orderView.fulfillmentStatus || orderView.delivery) && (
+                    <div className="mt-5 rounded-2xl border border-cream-200 bg-cream-50 p-4 text-left">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs font-extrabold uppercase tracking-wide text-ink-400">Order fulfillment</p>
+                        {(orderView.fulfillment?.status || orderView.fulfillmentStatus) && (
+                          <Badge tone="brand">{titleCase(String(orderView.fulfillment?.status || orderView.fulfillmentStatus).replace(/_/g, " "))}</Badge>
+                        )}
+                      </div>
+                      {orderView.delivery?.optionName && <p className="mt-2 text-sm font-bold">{orderView.delivery.optionName}{orderView.delivery.kind ? ` · ${titleCase(orderView.delivery.kind)}` : ""}</p>}
+                      {orderView.delivery?.pickupAddressText && <p className="mt-1 text-xs text-ink-500">Pickup at {orderView.delivery.pickupAddressText}</p>}
+                      {(orderView.fulfillment?.courierName || orderView.fulfillment?.courierPhone) && (
+                        <p className="mt-2 text-xs text-ink-500">
+                          {orderView.fulfillment.courierName || "Courier"}
+                          {orderView.fulfillment.courierPhone ? ` · ${orderView.fulfillment.courierPhone}` : ""}
+                        </p>
+                      )}
+                      {orderView.fulfillment?.shipmentReference && <p className="mt-1 text-xs text-ink-500">Shipment reference: {orderView.fulfillment.shipmentReference}</p>}
+                      {orderView.fulfillment?.trackingUrl && (
+                        <a href={orderView.fulfillment.trackingUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-extrabold text-brand-700 underline">
+                          <Icon name="external" size={14} /> Track your order
+                        </a>
+                      )}
+                      {(orderView.fulfillment?.events || orderView.fulfillment?.history || orderView.fulfillment?.statusHistory || orderView.fulfillmentHistory || orderView.fulfillmentStatusHistory || []).length > 0 && (
+                        <ol className="mt-4 space-y-2 border-l-2 border-brand-100 pl-3">
+                          {(orderView.fulfillment?.events || orderView.fulfillment?.history || orderView.fulfillment?.statusHistory || orderView.fulfillmentHistory || orderView.fulfillmentStatusHistory || []).map((entry, index) => (
+                            <li key={entry.id || `${entry.status}-${index}`} className="relative text-xs">
+                              <span className="absolute -left-[19px] top-1 h-2 w-2 rounded-full bg-brand-400 ring-2 ring-white" />
+                              <p className="font-extrabold">{titleCase(String(entry.status || "Update").replace(/_/g, " "))}</p>
+                              {entry.note && <p className="mt-0.5 text-ink-500">{entry.note}</p>}
+                              {(entry.createdAt || entry.at) && <p className="mt-0.5 text-[10px] text-ink-400">{fdt(entry.createdAt || entry.at)}</p>}
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                      {loadingOrder && <p className="mt-3 text-xs font-semibold text-ink-400">Refreshing order status…</p>}
+                    </div>
+                  )}
+
                   {err && (
                     <p className="mt-4 text-center text-xs font-bold text-danger-500">{err}</p>
                   )}
@@ -2629,6 +2694,8 @@ export default function StoreView() {
                                 type="button"
                                 onClick={() => {
                                   setDeliveryOptionId(option.id);
+                                  setShipbubbleQuote(null);
+                                  setShipbubbleChoice(null);
                                   setErr("");
                                 }}
                                 disabled={checkingOut}
@@ -2654,7 +2721,7 @@ export default function StoreView() {
                                   )}
                                 </div>
                                 <span className="ml-3 shrink-0 text-sm font-extrabold tabular-nums">
-                                  {base > 0 ? fm(base, DEFAULT_CURRENCY) : "Free"}
+                                  {option.provider === "SHIPBUBBLE" ? "Get courier rates" : base > 0 ? fm(base, DEFAULT_CURRENCY) : "Free"}
                                 </span>
                               </button>
   
@@ -2687,7 +2754,7 @@ export default function StoreView() {
                           <Input
                             value={addr.address}
                             maxLength={500}
-                            onChange={(e) => setAddr({ ...addr, address: e.target.value })}
+                            onChange={(e) => { setAddr({ ...addr, address: e.target.value }); setShipbubbleQuote(null); setShipbubbleChoice(null); }}
                             placeholder="Street address"
                             disabled={checkingOut}
                           />
@@ -2695,14 +2762,14 @@ export default function StoreView() {
                             <Input
                               value={addr.city}
                               maxLength={120}
-                              onChange={(e) => setAddr({ ...addr, city: e.target.value })}
+                              onChange={(e) => { setAddr({ ...addr, city: e.target.value }); setShipbubbleQuote(null); setShipbubbleChoice(null); }}
                               placeholder="City"
                               disabled={checkingOut}
                             />
                             <Input
                               value={addr.state}
                               maxLength={120}
-                              onChange={(e) => setAddr({ ...addr, state: e.target.value })}
+                              onChange={(e) => { setAddr({ ...addr, state: e.target.value }); setShipbubbleQuote(null); setShipbubbleChoice(null); }}
                               placeholder="State"
                               disabled={checkingOut}
                             />
@@ -2711,7 +2778,7 @@ export default function StoreView() {
                             type="tel"
                             value={addr.phone}
                             maxLength={30}
-                            onChange={(e) => setAddr({ ...addr, phone: e.target.value })}
+                            onChange={(e) => { setAddr({ ...addr, phone: e.target.value }); setShipbubbleQuote(null); setShipbubbleChoice(null); }}
                             placeholder="Delivery phone (required)"
                             disabled={checkingOut}
                           />
@@ -2724,6 +2791,28 @@ export default function StoreView() {
                             placeholder="Delivery instructions (optional)"
                             disabled={checkingOut}
                           />
+                          {selectedDelivery?.provider === "SHIPBUBBLE" && <div className="space-y-2">
+                            <Button variant="outline" loading={ratesBusy} disabled={checkingOut} onClick={async () => {
+                              if (!addr.address.trim() || !addr.city.trim() || !addr.state.trim() || !addr.phone.trim()) return setErr("Enter your delivery address, city, state and phone to get courier rates.");
+                              setRatesBusy(true); setErr(""); setShipbubbleQuote(null); setShipbubbleChoice(null);
+                              try {
+                                const response: any = await api.publicPost(`/api/public/checkout/${encodeURIComponent(subdomain)}/shipping-rates`, {
+                                  customer: { name: customer.name.trim(), email: customer.email.trim(), ...(customer.phone.trim() ? { phone: customer.phone.trim() } : {}) },
+                                  items: cart.map((line) => ({ productId: line.productId, ...(line.variantId ? { variantId: line.variantId } : {}), quantity: line.qty })),
+                                  deliveryOptionId: selectedDelivery.id,
+                                  deliveryAddress: addr.address.trim(), deliveryCity: addr.city.trim(), deliveryState: addr.state.trim(), deliveryPhone: addr.phone.trim(),
+                                  ...(addr.instructions.trim() ? { deliveryInstructions: addr.instructions.trim() } : {}),
+                                });
+                                const quote = response?.data || response;
+                                setShipbubbleQuote(quote);
+                                if (!Array.isArray(quote?.options) || quote.options.length === 0) setErr("No courier services are available for this address.");
+                              } catch (e: any) { setErr(e?.message || "Couldn't load courier rates."); }
+                              finally { setRatesBusy(false); }
+                            }}>Get courier rates</Button>
+                            {shipbubbleQuote?.options?.map((choice: any, index: number) => <button type="button" key={`${choice.courierId}-${choice.serviceCode}-${index}`} onClick={() => setShipbubbleChoice(choice)} className={cls("flex w-full items-center justify-between rounded-lg border p-3 text-left", shipbubbleChoice === choice ? "border-brand-500 bg-brand-50" : "border-cream-200 bg-white")}>
+                              <span><span className="block text-sm font-bold">{choice.name}</span>{choice.deliveryEta && <span className="text-xs text-ink-400">{choice.deliveryEta}</span>}</span><span className="font-extrabold">{fm(rawNum(choice.fee), choice.currency || DEFAULT_CURRENCY)}</span>
+                            </button>)}
+                          </div>}
                         </div>
                       )}
                     </div>

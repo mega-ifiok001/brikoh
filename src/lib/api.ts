@@ -107,13 +107,14 @@ interface RawOpts {
   method?: string;
   body?: any;
   auth?: boolean;
+  headers?: Record<string, string>;
 }
 
 // One fetch with a generous timeout + a single retry for cold starts /
 // transient network errors (the API runs on a free Render instance).
 async function rawFetch(
   path: string,
-  { method = "GET", body, auth = true }: RawOpts
+  { method = "GET", body, auth = true, headers: extraHeaders }: RawOpts
 ): Promise<{ status: number; json: any; text: string }> {
   const run = async (): Promise<Response> => {
     const ctrl = new AbortController();
@@ -121,6 +122,7 @@ async function rawFetch(
     try {
       const headers: Record<string, string> = {};
       if (body !== undefined) headers["Content-Type"] = "application/json";
+      if (extraHeaders) Object.assign(headers, extraHeaders);
       if (auth) {
         const at = getAccessToken();
         if (at) headers["Authorization"] = `Bearer ${at}`;
@@ -233,7 +235,7 @@ export const api = {
   get: (path: string) => request(path, { method: "GET" }),
   post: (path: string, body?: any) => request(path, { method: "POST", body: body ?? {} }),
   put: (path: string, body?: any) => request(path, { method: "PUT", body: body ?? {} }),
-  patch: (path: string, body?: any) => request(path, { method: "PATCH", body: body ?? {} }),
+  patch: (path: string, body?: any, headers?: Record<string, string>) => request(path, { method: "PATCH", body: body ?? {}, headers }),
   del: (path: string) => request(path, { method: "DELETE" }),
   publicGet: (path: string) => request(path, { method: "GET", auth: false }),
   publicPost: (path: string, body?: any) => request(path, { method: "POST", body: body ?? {}, auth: false }),

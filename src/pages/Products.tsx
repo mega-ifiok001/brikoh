@@ -65,6 +65,7 @@ interface FormState {
   sku: string;
   price: string;
   costPrice: string;
+  shippingWeightKg: string;
   discountPrice: string;
   description: string;
   categoryId: string;
@@ -115,6 +116,7 @@ const BLANK: FormState = {
   sku: "",
   price: "",
   costPrice: "",
+  shippingWeightKg: "",
   discountPrice: "",
   description: "",
   categoryId: "",
@@ -383,6 +385,8 @@ export default function Products() {
           ? String(x.costPrice)
           : "",
 
+      shippingWeightKg: x.shippingWeightKg != null ? String(x.shippingWeightKg) : "",
+
       discountPrice:
         x.discountPrice != null
           ? String(x.discountPrice)
@@ -538,6 +542,12 @@ export default function Products() {
       setFormErr(
         "Enter a valid cost price."
       );
+      return;
+    }
+
+    const shippingWeightKg = form.shippingWeightKg.trim() ? Number(form.shippingWeightKg) : null;
+    if (shippingWeightKg != null && (!Number.isFinite(shippingWeightKg) || shippingWeightKg < 0.001 || shippingWeightKg > 99999.999 || !/^\d+(?:\.\d{1,3})?$/.test(form.shippingWeightKg.trim()))) {
+      setFormErr("Shipping weight must be between 0.001 and 99,999.999 kg, with up to 3 decimal places.");
       return;
     }
 
@@ -986,6 +996,9 @@ export default function Products() {
       } else if (editing) {
         payload.costPrice = null;
       }
+
+      if (shippingWeightKg != null) payload.shippingWeightKg = String(shippingWeightKg);
+      else if (editing) payload.shippingWeightKg = null;
 
       if (description) {
         payload.description =
@@ -2706,6 +2719,10 @@ export default function Products() {
               }
               placeholder="0.00"
             />
+          </Field>
+
+          <Field label="Shipping weight (kg)" hint="Needed for accurate Shipbubble courier quotes. Optional for other delivery methods.">
+            <Input type="number" min="0.001" max="99999.999" step="0.001" value={form.shippingWeightKg} onChange={(e) => setForm({ ...form, shippingWeightKg: e.target.value })} placeholder="e.g. 0.5" />
           </Field>
 
           <Field
